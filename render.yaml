@@ -1,9 +1,14 @@
-# Render Blueprint for the Byke OS API (docs/deploy.md).
-# The web app is deployed separately on Vercel (apps/mobile/vercel.json).
+# Render Blueprint: the whole of Byke OS on Render (docs/deploy.md).
+#   byke-os-api: Express API in Docker (migrations run on every start)
+#   byke-os-web: the Expo web app as a static site
+# The database is MongoDB Atlas (connection string in MONGODB_URI).
 services:
   - type: web
     name: byke-os-api
     runtime: docker
+    # Free: sleeps after 15 min idle, and photos are lost on restart. For the pilot use 'starter'
+    # (paid) and enable the disk below.
+    plan: free
     dockerfilePath: ./apps/api/Dockerfile
     dockerContext: .
     healthCheckPath: /api/v1/health
@@ -13,7 +18,7 @@ services:
         value: production
       - key: MONGODB_URI # Atlas connection string, with /byke_os before the "?"
         sync: false
-      - key: CORS_ORIGINS # the Vercel URL of the web app, e.g. https://byke-os.vercel.app
+      - key: CORS_ORIGINS # the web app's URL, e.g. https://byke-os-web.onrender.com
         sync: false
       - key: JWT_ACCESS_SECRET
         generateValue: true
@@ -28,3 +33,20 @@ services:
     #   name: uploads
     #   mountPath: /repo/apps/api/uploads
     #   sizeGB: 1
+
+  - type: web
+    name: byke-os-web
+    runtime: static
+    buildCommand: npm ci && cd apps/mobile && npx expo export --platform web
+    staticPublishPath: ./apps/mobile/dist
+    autoDeploy: true
+    envVars:
+      - key: NODE_VERSION
+        value: '22'
+      - key: EXPO_PUBLIC_API_URL # the API's URL + /api/v1, e.g. https://byke-os-api.onrender.com/api/v1
+        sync: false
+    # Single-page app: every path loads index.html and the app's router takes over.
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html
