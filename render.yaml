@@ -1,0 +1,30 @@
+# Render Blueprint for the Byke OS API (docs/deploy.md).
+# The web app is deployed separately on Vercel (apps/mobile/vercel.json).
+services:
+  - type: web
+    name: byke-os-api
+    runtime: docker
+    dockerfilePath: ./apps/api/Dockerfile
+    dockerContext: .
+    healthCheckPath: /api/v1/health
+    autoDeploy: true
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: MONGODB_URI # Atlas connection string, with /byke_os before the "?"
+        sync: false
+      - key: CORS_ORIGINS # the Vercel URL of the web app, e.g. https://byke-os.vercel.app
+        sync: false
+      - key: JWT_ACCESS_SECRET
+        generateValue: true
+      - key: JWT_REFRESH_SECRET
+        generateValue: true
+      - key: LOG_LEVEL
+        value: info
+    # Task photos are saved on disk. On Render the disk is wiped on every deploy/restart
+    # unless a persistent disk is attached (paid plans only). To keep photos, use a paid
+    # instance and uncomment:
+    # disk:
+    #   name: uploads
+    #   mountPath: /repo/apps/api/uploads
+    #   sizeGB: 1

@@ -1,0 +1,11 @@
+:root {
+  --font-display: Poppins_400Regular, Poppins, ui-sans-serif, system-ui, sans-serif;
+  --font-mono:
+    ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, Liberation Mono, Courier New, monospace;
+}
+
+/* Text boxes draw their own teal focus border, so hide the browser's black focus ring. */
+input:focus,
+textarea:focus {
+  outline: none;
+}

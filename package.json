@@ -1,0 +1,44 @@
+{
+  "name": "byke-os",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Byke OS — cross-platform (iOS / Android / Web) app with a Node.js + MongoDB API",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "engines": {
+    "node": ">=22.0.0",
+    "npm": ">=10.0.0"
+  },
+  "scripts": {
+    "dev": "concurrently -n api,app -c blue,magenta \"npm:dev:api\" \"npm:dev:app\"",
+    "dev:api": "npm run dev -w @byke-os/api",
+    "dev:app": "npm run start -w @byke-os/mobile",
+    "web": "npm run web -w @byke-os/mobile",
+    "android": "npm run android -w @byke-os/mobile",
+    "ios": "npm run ios -w @byke-os/mobile",
+    "build": "npm run build -w @byke-os/shared && npm run build -w @byke-os/api",
+    "test": "npm run test -w @byke-os/api",
+    "lint": "npm run lint --workspaces --if-present",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "db:up": "docker compose up -d mongo",
+    "db:down": "docker compose down",
+    "db:migrate": "npm run migrate:up -w @byke-os/api",
+    "db:migrate:status": "npm run migrate:status -w @byke-os/api",
+    "db:seed": "npm run seed -w @byke-os/api",
+    "prepare": "husky",
+    "postinstall": "npm run build -w @byke-os/shared"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.0",
+    "husky": "^9.1.7",
+    "lint-staged": "^15.2.10",
+    "prettier": "^3.4.2"
+  },
+  "lint-staged": {
+    "*.{ts,tsx,js,jsx,json,md,yml,yaml}": "prettier --write"
+  }
+}

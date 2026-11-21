@@ -1,0 +1,34 @@
+services:
+  mongo:
+    image: mongo:8
+    container_name: byke-os-mongo
+    restart: unless-stopped
+    ports:
+      - '27017:27017'
+    environment:
+      MONGO_INITDB_DATABASE: byke_os
+    volumes:
+      - mongo-data:/data/db
+    healthcheck:
+      test: ['CMD', 'mongosh', '--quiet', '--eval', "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  api:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    container_name: byke-os-api
+    profiles: ['full']
+    depends_on:
+      mongo:
+        condition: service_healthy
+    env_file: apps/api/.env
+    environment:
+      MONGODB_URI: mongodb://mongo:27017/byke_os
+    ports:
+      - '4000:4000'
+
+volumes:
+  mongo-data:
