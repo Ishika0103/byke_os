@@ -9,6 +9,8 @@ const roleSchema = new Schema(
   {
     name: { type: String, required: true, trim: true, minlength: 2, maxlength: 50 },
     code: { type: String, required: true, trim: true, uppercase: true, immutable: true },
+    // Named permissions (Plan 06); Super Admin holds ['*'], other roles start empty.
+    permissions: { type: [String], default: [] },
   },
   { timestamps: true, collection: 'roles' },
 );

@@ -1,9 +1,11 @@
-import type {
-  CreateRoleInput,
-  Paginated,
-  Role,
-  RoleListQuery,
-  UpdateRoleInput,
+import {
+  SUPER_ADMIN_ROLE_CODE,
+  type CreateRoleInput,
+  type Paginated,
+  type Role,
+  type RoleListQuery,
+  type RoleSummary,
+  type UpdateRoleInput,
 } from '@byke-os/shared';
 import { type LeanBase, softDeleteUpdate, toBaseDto } from '../../db/lean-types';
 import { AppError } from '../../utils/app-error';
@@ -11,9 +13,14 @@ import { escapeRegex, toSort } from '../../utils/query';
 import { UserModel } from '../users/user.model';
 import { CASE_INSENSITIVE, RoleModel } from './role.model';
 
-type LeanRole = LeanBase & { name: string; code: string };
+type LeanRole = LeanBase & { name: string; code: string; permissions?: string[] };
 
-const toRoleDto = (r: LeanRole): Role => ({ ...toBaseDto(r), name: r.name, code: r.code });
+const toRoleDto = (r: LeanRole): Role => ({
+  ...toBaseDto(r),
+  name: r.name,
+  code: r.code,
+  permissions: r.permissions ?? [],
+});
 
 async function findOrThrow(id: string): Promise<LeanRole> {
   const role = await RoleModel.findById(id).lean<LeanRole>();
@@ -33,6 +40,16 @@ async function assertNameFree(name: string, exceptId?: string) {
 }
 
 export const roleService = {
+  /** Names only (no permissions), for pickers in the user screens. */
+  async options(): Promise<RoleSummary[]> {
+    const roles = await RoleModel.find({ isActive: true })
+      .collation(CASE_INSENSITIVE)
+      .sort({ name: 1 })
+      .select('name code')
+      .lean<{ _id: unknown; name: string; code: string }[]>();
+    return roles.map((r) => ({ id: String(r._id), name: r.name, code: r.code }));
+  },
+
   async list(query: RoleListQuery): Promise<Paginated<Role>> {
     const { page, limit, q, isActive, sort } = query;
     const filter: Record<string, unknown> = {};
@@ -70,6 +87,9 @@ export const roleService = {
 
   async update(id: string, input: UpdateRoleInput, actorId: string): Promise<Role> {
     const role = await findOrThrow(id);
+    if (input.permissions !== undefined && role.code === SUPER_ADMIN_ROLE_CODE) {
+      throw AppError.forbidden("Super Admin's permissions can't be changed");
+    }
 
     if (input.name !== undefined && input.name !== role.name) await assertNameFree(input.name, id);
     if (input.isActive === false && role.isActive && (await isInUse(id))) {

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { createApp } from '../src/app';
 import { roomTypeCodeFromName } from '../src/modules/room-types/room-type.service';
-import { signedInAs, useTestDatabase } from './helpers';
+import { signedInAs, useTestDatabase, locationId } from './helpers';
 
 useTestDatabase();
 
@@ -12,7 +12,7 @@ type Admin = Awaited<ReturnType<typeof signedInAs>>;
 async function makeHotel(admin: Admin, name = 'Astara') {
   const res = await admin.post('/api/v1/hotels', {
     name,
-    location: { city: 'Matheran', state: 'Maharashtra' },
+    locationId: await locationId(),
     checkInTime: '14:00',
     checkOutTime: '11:00',
   });

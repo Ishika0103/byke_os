@@ -2,6 +2,7 @@ import { formatLocation } from '@byke-os/shared';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useState } from 'react';
 
+import { Can, usePermission } from '@/features/auth';
 import { Button } from '@/components/ui/button';
 import { CardList } from '@/components/ui/card';
 import { ListRow } from '@/components/ui/list-row';
@@ -18,6 +19,8 @@ import { errorMessage } from '@/lib/form-errors';
 
 export default function EditHotelScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
+  const canTypes = usePermission('view-room-type');
+  const canRooms = usePermission('view-room');
   const { hotel, setHotel, error, retry } = useHotelDetail(id);
   const { reloadHotels } = useHotel();
   const counts = useRoomCounts(id);
@@ -67,54 +70,66 @@ export default function EditHotelScreen() {
         router.back();
       }}
     >
-      <SectionLabel title="Rooms" />
-      <CardList>
-        <ListRow
-          icon="bed"
-          title="Room types"
-          subtitle="Deluxe, Suite, cleaning time"
-          value={counts ? String(counts.roomTypes) : undefined}
-          onPress={() => router.push({ pathname: '/hotels/[id]/room-types', params: { id } })}
-        />
-        <ListRow
-          icon="hotel"
-          title="Rooms"
-          subtitle="Numbers, floors, sellable"
-          value={counts ? String(counts.rooms) : undefined}
-          onPress={() => router.push({ pathname: '/hotels/[id]/rooms', params: { id } })}
-        />
-      </CardList>
+      {canTypes || canRooms ? <SectionLabel title="Rooms" /> : null}
+      {canTypes || canRooms ? (
+        <CardList>
+          {canTypes ? (
+            <ListRow
+              icon="bed"
+              title="Room types"
+              subtitle="Deluxe, Suite, cleaning time"
+              value={counts?.roomTypes !== undefined ? String(counts.roomTypes) : undefined}
+              onPress={() => router.push({ pathname: '/hotels/[id]/room-types', params: { id } })}
+            />
+          ) : null}
+          {canRooms ? (
+            <ListRow
+              icon="hotel"
+              title="Rooms"
+              subtitle="Numbers, floors, sellable"
+              value={counts?.rooms !== undefined ? String(counts.rooms) : undefined}
+              onPress={() => router.push({ pathname: '/hotels/[id]/rooms', params: { id } })}
+            />
+          ) : null}
+        </CardList>
+      ) : null}
 
-      <SectionLabel title="Status" />
-      <StatusToggle
-        active={hotel.isActive}
-        onChange={async (isActive) => {
-          setHotel(await hotelsApi.update(hotel.id, { isActive }));
-          reloadHotels();
-        }}
-        description={hotel.isActive ? 'Shown in the hotel picker' : 'Hidden from the hotel picker'}
-        activate={{
-          title: `Make ${hotel.name} active?`,
-          message: 'It will show in the hotel picker again.',
-          confirmLabel: 'Make active',
-        }}
-        deactivate={{
-          title: `Make ${hotel.name} inactive?`,
-          message:
-            "It won't show in the hotel picker until you make it active again. Its data stays.",
-          confirmLabel: 'Make inactive',
-        }}
-      />
+      <Can permission="edit-hotel">
+        <SectionLabel title="Status" />
+        <StatusToggle
+          active={hotel.isActive}
+          onChange={async (isActive) => {
+            setHotel(await hotelsApi.update(hotel.id, { isActive }));
+            reloadHotels();
+          }}
+          description={
+            hotel.isActive ? 'Shown in the hotel picker' : 'Hidden from the hotel picker'
+          }
+          activate={{
+            title: `Make ${hotel.name} active?`,
+            message: 'It will show in the hotel picker again.',
+            confirmLabel: 'Make active',
+          }}
+          deactivate={{
+            title: `Make ${hotel.name} inactive?`,
+            message:
+              "It won't show in the hotel picker until you make it active again. Its data stays.",
+            confirmLabel: 'Make inactive',
+          }}
+        />
+      </Can>
 
-      <Button
-        title="Delete hotel"
-        icon="delete"
-        variant="danger"
-        onPress={() => {
-          setDeleteError(null);
-          setDeleteOpen(true);
-        }}
-      />
+      <Can permission="delete-hotel">
+        <Button
+          title="Delete hotel"
+          icon="delete"
+          variant="danger"
+          onPress={() => {
+            setDeleteError(null);
+            setDeleteOpen(true);
+          }}
+        />
+      </Can>
       <ConfirmDialog
         visible={deleteOpen}
         title={`Delete ${hotel.name}?`}

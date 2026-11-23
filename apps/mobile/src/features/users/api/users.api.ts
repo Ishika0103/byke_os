@@ -13,6 +13,7 @@ export type UserListParams = {
   limit?: number;
   q?: string;
   roleId?: string;
+  hotelId?: string;
   isActive?: boolean;
 };
 

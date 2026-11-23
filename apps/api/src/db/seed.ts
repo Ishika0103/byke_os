@@ -40,7 +40,7 @@ async function seed() {
     );
   }
 
-  const user = await userService.create(parsed.data, null);
+  const user = await userService.create(parsed.data, null, true);
   logger.info(`Super Admin created: ${user.email}`);
 }
 

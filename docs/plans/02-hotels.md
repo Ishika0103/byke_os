@@ -62,7 +62,7 @@ Shared (`packages/shared/src/schemas/hotel.ts`): `createHotelSchema`, `updateHot
 
 ## 5. App
 
-- **Hotels list** (`/hotels`, reached from Profile → Administration → Hotels): same look as Roles. Header with back + add button, search (name / code / city), rows show the hotel icon, name, `CODE · City, State`, and the green/red Active pill.
+- **Hotels list** (`/hotels`, reached from Settings → Administration → Hotels): same look as Roles. Header with back + add button, search (name / code / city), rows show the hotel icon, name, `CODE · City, State`, and the green/red Active pill.
 - **Add / edit hotel** (`/hotels/new`, `/hotels/[id]`), Save pinned at the bottom:
   - Details: Name, Code (locked after creation).
   - **Location**: a select field that opens a bottom sheet with a **search box** at the top (filters by city or state as you type) and the matching cities below, shown as "Matheran · Maharashtra".

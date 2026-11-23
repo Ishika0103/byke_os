@@ -3,6 +3,7 @@ import { useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { Can } from '@/features/auth';
 import { GroupedList } from '@/components/ui/grouped-list';
 import { HeaderButton, PageHeader } from '@/components/ui/page-header';
 import { SearchField } from '@/components/ui/search-field';
@@ -21,13 +22,15 @@ export default function HotelsScreen() {
         title="Hotels"
         subtitle="Byke properties on Byke OS"
         right={
-          <HeaderButton icon="add" label="Add hotel" onPress={() => router.push('/hotels/new')} />
+          <Can permission="add-hotel">
+            <HeaderButton icon="add" label="Add hotel" onPress={() => router.push('/hotels/new')} />
+          </Can>
         }
       >
         <SearchField
           value={search}
           onChangeText={setSearch}
-          placeholder="Search name, code or city"
+          placeholder="Search name, code or location"
         />
       </PageHeader>
 
@@ -50,7 +53,11 @@ export default function HotelsScreen() {
         loadingMore={list.loadingMore}
         empty={
           search
-            ? { icon: 'search', title: 'No hotels match', body: 'Try another name, code or city.' }
+            ? {
+                icon: 'search',
+                title: 'No hotels match',
+                body: 'Try another name, code or location.',
+              }
             : { icon: 'hotel', title: 'No hotels yet', body: 'Tap + to add the first one.' }
         }
         bottomSpace={insets.bottom + Spacing.four}

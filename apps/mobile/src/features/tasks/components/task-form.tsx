@@ -1,8 +1,11 @@
+import { usePermission } from '@/features/auth';
+import { ReadOnly } from '@/components/ui/read-only';
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { StyleSheet, View } from 'react-native';
 import {
   DEPARTMENTS,
   createTaskSchema,
+  SUPER_ADMIN_ROLE_CODE,
   updateTaskSchema,
   type DepartmentKey,
   type TaskDetail,
@@ -73,7 +76,11 @@ function useChoices(hotelId: string) {
       .list({ limit: 100, isActive: true })
       .then((p) => {
         if (cancelled) return;
-        setPeople(p.items.map((u) => ({ value: u.id, label: u.name, description: u.email })));
+        // Only people at this hotel, plus Super Admins (they work everywhere). Plan 05.
+        const here = p.items.filter(
+          (u) => u.role?.code === SUPER_ADMIN_ROLE_CODE || u.hotels.some((h) => h.id === hotelId),
+        );
+        setPeople(here.map((u) => ({ value: u.id, label: u.name, description: u.email })));
       })
       .catch(() => {});
     return () => {
@@ -98,6 +105,9 @@ export function TaskForm({
   onSaved: (task: TaskDetail) => void;
 }) {
   const editing = !!task;
+  // Without the edit permission an existing record is shown read-only (Plan 06).
+  const canEdit = usePermission('edit-task');
+  const locked = editing && !canEdit;
   const initialDue = useMemo(() => (task ? new Date(task.dueAt) : defaultDue()), [task]);
   const choices = useChoices(hotelId);
 
@@ -183,94 +193,97 @@ export function TaskForm({
     <Screen
       header={header}
       footer={
-        <Button
-          title={editing ? 'Save changes' : 'Create task'}
-          icon={editing ? 'check' : 'add'}
-          onPress={save}
-          loading={saving}
-        />
+        locked ? undefined : (
+          <Button
+            title={editing ? 'Save changes' : 'Create task'}
+            icon={editing ? 'check' : 'add'}
+            onPress={save}
+            loading={saving}
+          />
+        )
       }
     >
       {formError ? <Banner message={formError} /> : null}
+      <ReadOnly locked={locked}>
+        <SectionLabel title="What" />
+        <Card>
+          <TextField
+            label="Title"
+            value={title}
+            onChangeText={setTitle}
+            error={errors.title}
+            placeholder="e.g. Clean room 101, Fix AC in 204"
+            autoCapitalize="sentences"
+            editable={!saving}
+          />
+          <SelectField
+            label="Department"
+            value={department}
+            options={DEPARTMENT_OPTIONS}
+            onChange={(v) => {
+              setDepartment(v as DepartmentKey);
+              setErrors((e) => ({ ...e, department: undefined }));
+            }}
+            placeholder="Choose a department"
+            error={errors.department}
+            disabled={saving}
+          />
+          <SelectField
+            label="Room (optional)"
+            value={roomId}
+            options={roomOptions}
+            onChange={setRoomId}
+            error={errors.roomId}
+            disabled={saving}
+            searchable={roomOptions.length > 8}
+            searchPlaceholder="Search room"
+          />
+          <TextField
+            label="Details (optional)"
+            value={description}
+            onChangeText={setDescription}
+            error={errors.description}
+            placeholder="Anything the person doing it should know"
+            multiline
+            editable={!saving}
+          />
+        </Card>
 
-      <SectionLabel title="What" />
-      <Card>
-        <TextField
-          label="Title"
-          value={title}
-          onChangeText={setTitle}
-          error={errors.title}
-          placeholder="e.g. Clean room 101, Fix AC in 204"
-          autoCapitalize="sentences"
-          editable={!saving}
-        />
-        <SelectField
-          label="Department"
-          value={department}
-          options={DEPARTMENT_OPTIONS}
-          onChange={(v) => {
-            setDepartment(v as DepartmentKey);
-            setErrors((e) => ({ ...e, department: undefined }));
-          }}
-          placeholder="Choose a department"
-          error={errors.department}
-          disabled={saving}
-        />
-        <SelectField
-          label="Room (optional)"
-          value={roomId}
-          options={roomOptions}
-          onChange={setRoomId}
-          error={errors.roomId}
-          disabled={saving}
-          searchable={roomOptions.length > 8}
-          searchPlaceholder="Search room"
-        />
-        <TextField
-          label="Details (optional)"
-          value={description}
-          onChangeText={setDescription}
-          error={errors.description}
-          placeholder="Anything the person doing it should know"
-          multiline
-          editable={!saving}
-        />
-      </Card>
-
-      <SectionLabel title="Who and when" />
-      <Card>
-        <SelectField
-          label="Assigned to (optional)"
-          value={assigneeId}
-          options={peopleOptions}
-          onChange={setAssigneeId}
-          error={errors.assigneeId}
-          disabled={saving}
-          searchable={peopleOptions.length > 8}
-          searchPlaceholder="Search name or email"
-        />
-        <View style={styles.pair}>
-          <View style={styles.half}>
-            <SelectField
-              label="Due day"
-              value={day}
-              options={days}
-              onChange={setDay}
-              error={errors.dueAt}
-              disabled={saving}
-            />
+        <SectionLabel title="Who and when" />
+        <Card>
+          <SelectField
+            label="Assigned to (optional)"
+            value={assigneeId}
+            options={peopleOptions}
+            onChange={setAssigneeId}
+            error={errors.assigneeId}
+            disabled={saving}
+            searchable={peopleOptions.length > 8}
+            searchPlaceholder="Search name or email"
+          />
+          <View style={styles.pair}>
+            <View style={styles.half}>
+              <SelectField
+                label="Due day"
+                value={day}
+                options={days}
+                onChange={setDay}
+                error={errors.dueAt}
+                disabled={saving}
+              />
+            </View>
+            <View style={styles.half}>
+              <SelectField
+                label="Due time"
+                value={time}
+                options={times}
+                onChange={setTime}
+                disabled={saving}
+              />
+            </View>
           </View>
-          <View style={styles.half}>
-            <SelectField
-              label="Due time"
-              value={time}
-              options={times}
-              onChange={setTime}
-              disabled={saving}
-            />
-          </View>
-        </View>
-      </Card>
+        </Card>
+      </ReadOnly>
     </Screen>
   );
 }

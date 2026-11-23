@@ -3,6 +3,7 @@ import { useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { Can } from '@/features/auth';
 import { GroupedList } from '@/components/ui/grouped-list';
 import { HeaderButton, PageHeader } from '@/components/ui/page-header';
 import { SearchField } from '@/components/ui/search-field';
@@ -24,11 +25,15 @@ export default function RoomTypesScreen() {
         title="Room types"
         subtitle={hotel?.name ?? ' '}
         right={
-          <HeaderButton
-            icon="add"
-            label="Add room type"
-            onPress={() => router.push({ pathname: '/hotels/[id]/room-types/new', params: { id } })}
-          />
+          <Can permission="add-room-type">
+            <HeaderButton
+              icon="add"
+              label="Add room type"
+              onPress={() =>
+                router.push({ pathname: '/hotels/[id]/room-types/new', params: { id } })
+              }
+            />
+          </Can>
         }
       >
         <SearchField value={search} onChangeText={setSearch} placeholder="Search name or code" />

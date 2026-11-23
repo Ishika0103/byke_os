@@ -4,6 +4,7 @@ import {
   roomTypeListQuerySchema,
   updateRoomTypeSchema,
 } from '@byke-os/shared';
+import { authorize } from '../../middlewares/authorize';
 import { validateBody, validateObjectIdParam, validateQuery } from '../../middlewares/validate';
 import { requireHotel } from '../hotels/hotel-param';
 import { roomTypeController } from './room-type.controller';
@@ -14,8 +15,23 @@ export const roomTypeRouter = Router({ mergeParams: true });
 roomTypeRouter.use(requireHotel);
 roomTypeRouter.param('id', validateObjectIdParam);
 
-roomTypeRouter.get('/', validateQuery(roomTypeListQuerySchema), roomTypeController.list);
-roomTypeRouter.post('/', validateBody(createRoomTypeSchema), roomTypeController.create);
-roomTypeRouter.get('/:id', roomTypeController.getById);
-roomTypeRouter.patch('/:id', validateBody(updateRoomTypeSchema), roomTypeController.update);
-roomTypeRouter.delete('/:id', roomTypeController.remove);
+roomTypeRouter.get(
+  '/',
+  authorize('view-room-type'),
+  validateQuery(roomTypeListQuerySchema),
+  roomTypeController.list,
+);
+roomTypeRouter.post(
+  '/',
+  authorize('add-room-type'),
+  validateBody(createRoomTypeSchema),
+  roomTypeController.create,
+);
+roomTypeRouter.get('/:id', authorize('view-room-type'), roomTypeController.getById);
+roomTypeRouter.patch(
+  '/:id',
+  authorize('edit-room-type'),
+  validateBody(updateRoomTypeSchema),
+  roomTypeController.update,
+);
+roomTypeRouter.delete('/:id', authorize('delete-room-type'), roomTypeController.remove);

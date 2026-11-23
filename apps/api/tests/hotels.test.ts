@@ -1,8 +1,8 @@
 import request from 'supertest';
-import { describe, expect, it } from 'vitest';
+import { beforeAll, describe, expect, it } from 'vitest';
 import { createApp } from '../src/app';
 import { hotelCodeFromName as codeFromName } from '../src/modules/hotels/hotel.service';
-import { signedInAs, useTestDatabase } from './helpers';
+import { locationId, signedInAs, useTestDatabase } from './helpers';
 
 useTestDatabase();
 
@@ -10,10 +10,14 @@ const app = createApp();
 
 const ASTARA = {
   name: 'Astara',
-  location: { city: 'Matheran', state: 'Maharashtra' },
+  locationId: '',
   checkInTime: '14:00',
   checkOutTime: '11:00',
 };
+
+beforeAll(async () => {
+  ASTARA.locationId = await locationId('Matheran');
+});
 
 describe('hotels CRUD', () => {
   it('requires login', async () => {
@@ -36,7 +40,10 @@ describe('hotels CRUD', () => {
 
     expect(res.status).toBe(201);
     expect(res.body.data).toMatchObject({
-      ...ASTARA,
+      name: ASTARA.name,
+      checkInTime: ASTARA.checkInTime,
+      checkOutTime: ASTARA.checkOutTime,
+      location: { name: 'Matheran', state: 'Maharashtra' },
       code: 'AST',
       isActive: true,
       createdBy: admin.user.id,
@@ -59,12 +66,13 @@ describe('hotels CRUD', () => {
     expect(dupName.body.error.code).toBe('NAME_TAKEN');
   });
 
-  it('validates city, times, code format, unknown fields and code changes', async () => {
+  it('validates location, times, code format, unknown fields and code changes', async () => {
     const admin = await signedInAs(app);
     const post = (body: object) => admin.post('/api/v1/hotels', { ...ASTARA, ...body });
 
+    expect((await post({ locationId: '6b0036dc52b76c3a9c0862ff' })).status).toBe(400);
+    expect((await post({ locationId: 'nope' })).status).toBe(400);
     expect((await post({ location: { city: 'Matheran', state: 'Goa' } })).status).toBe(400);
-    expect((await post({ location: { city: 'Atlantis', state: 'Goa' } })).status).toBe(400);
     expect((await post({ checkInTime: '25:00' })).status).toBe(400);
     expect((await post({ checkOutTime: '2pm' })).status).toBe(400);
     expect((await post({ code: 'ABC' })).status).toBe(400);
@@ -88,7 +96,7 @@ describe('hotels CRUD', () => {
 
     const res = await admin.patch(`/api/v1/hotels/${id}`, {
       name: 'Astara Resort',
-      location: { city: 'North Goa', state: 'Goa' },
+      locationId: await locationId('North Goa'),
       checkInTime: '13:30',
       isActive: false,
     });
@@ -96,7 +104,7 @@ describe('hotels CRUD', () => {
     expect(res.body.data).toMatchObject({
       name: 'Astara Resort',
       code: 'AST',
-      location: { city: 'North Goa', state: 'Goa' },
+      location: { name: 'North Goa', state: 'Goa' },
       checkInTime: '13:30',
       checkOutTime: '11:00',
       isActive: false,
@@ -112,7 +120,7 @@ describe('hotels CRUD', () => {
     const ooty = await admin.post('/api/v1/hotels', {
       ...ASTARA,
       name: 'Sunshine Grand',
-      location: { city: 'Ooty', state: 'Tamil Nadu' },
+      locationId: await locationId('Ooty'),
     });
     await admin.patch(`/api/v1/hotels/${ooty.body.data.id}`, { isActive: false });
 
@@ -135,5 +143,44 @@ describe('hotels CRUD', () => {
     expect((await admin.get(`/api/v1/hotels/${id}`)).status).toBe(404);
     expect((await admin.get('/api/v1/hotels')).body.data.total).toBe(0);
     expect((await admin.post('/api/v1/hotels', ASTARA)).status).toBe(201);
+  });
+});
+
+describe('locations (Plan 08)', () => {
+  it('lists the 21 seeded locations for anyone signed in, login required', async () => {
+    expect((await request(app).get('/api/v1/locations')).status).toBe(401);
+    const admin = await signedInAs(app);
+    const res = await admin.get('/api/v1/locations?limit=100');
+    expect(res.status).toBe(200);
+    expect(res.body.data.total).toBe(21);
+    const names = res.body.data.items.map((l: { name: string }) => l.name);
+    expect(names).toEqual(
+      expect.arrayContaining(['Matheran', 'North Goa', 'South Goa', 'Borivali']),
+    );
+    expect(names).not.toContain('Goa');
+    expect((await admin.get('/api/v1/locations?q=goa')).body.data.total).toBe(2);
+  });
+
+  it('shows the location on a hotel and filters hotels by it', async () => {
+    const admin = await signedInAs(app);
+    const created = await admin.post('/api/v1/hotels', ASTARA);
+    expect(created.body.data.location).toMatchObject({ name: 'Matheran', state: 'Maharashtra' });
+    expect(created.body.data.locationId).toBeUndefined();
+
+    const goa = await locationId('South Goa');
+    await admin.post('/api/v1/hotels', { ...ASTARA, name: 'Old Anchor', locationId: goa });
+    const filtered = await admin.get(`/api/v1/hotels?locationId=${goa}`);
+    expect(filtered.body.data.total).toBe(1);
+    expect(filtered.body.data.items[0].location.name).toBe('South Goa');
+  });
+
+  it('rejects an unknown location', async () => {
+    const admin = await signedInAs(app);
+    const res = await admin.post('/api/v1/hotels', {
+      ...ASTARA,
+      locationId: '6b0036dc52b76c3a9c0862ff',
+    });
+    expect(res.status).toBe(400);
+    expect(res.body.error.details.locationId).toBeDefined();
   });
 });

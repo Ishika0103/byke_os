@@ -1,22 +1,16 @@
 import { z } from 'zod';
-import { type CityLocation, isKnownCity } from '../data/indian-cities';
-import { type BaseEntity, listQuerySchema, nameSchema } from './common';
+import { type BaseEntity, listQuerySchema, nameSchema, objectIdSchema } from './common';
+import type { LocationSummary } from './location';
 
 /** Time of day as 24-hour "HH:mm", e.g. "14:00". */
 export const timeOfDaySchema = z
   .string()
   .regex(/^([01]\d|2[0-3]):[0-5]\d$/, 'Time must be HH:mm (24-hour)');
 
-/** City + state, must be in INDIAN_CITIES. */
-export const hotelLocationSchema = z
-  .object({ city: z.string().trim(), state: z.string().trim() })
-  .strict()
-  .refine(isKnownCity, 'Pick a city from the list');
-
 export const createHotelSchema = z
   .object({
     name: nameSchema(2, 100),
-    location: hotelLocationSchema,
+    locationId: objectIdSchema,
     checkInTime: timeOfDaySchema,
     checkOutTime: timeOfDaySchema,
     /** Defaults to active. */
@@ -28,7 +22,7 @@ export const createHotelSchema = z
 export const updateHotelSchema = z
   .object({
     name: nameSchema(2, 100),
-    location: hotelLocationSchema,
+    locationId: objectIdSchema,
     checkInTime: timeOfDaySchema,
     checkOutTime: timeOfDaySchema,
     isActive: z.boolean(),
@@ -40,6 +34,7 @@ export const updateHotelSchema = z
 export const hotelListQuerySchema = listQuerySchema
   .extend({
     sort: z.enum(['name', '-name', 'code', '-code', 'createdAt', '-createdAt']).default('name'),
+    locationId: objectIdSchema.optional(),
   })
   .strict();
 
@@ -51,7 +46,10 @@ export type Hotel = BaseEntity & {
   name: string;
   /** Generated from the name on create, e.g. "BRG"; never changes. */
   code: string;
-  location: CityLocation;
+  location: LocationSummary;
   checkInTime: string;
   checkOutTime: string;
 };
+
+/** A hotel as shown on other records (e.g. a user's hotels). */
+export type HotelSummary = { id: string; name: string; code: string };

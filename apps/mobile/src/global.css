@@ -9,3 +9,9 @@ input:focus,
 textarea:focus {
   outline: none;
 }
+
+/* Password fields have their own Show / Hide button, so hide the browser's built-in eye (Edge). */
+input::-ms-reveal,
+input::-ms-clear {
+  display: none;
+}

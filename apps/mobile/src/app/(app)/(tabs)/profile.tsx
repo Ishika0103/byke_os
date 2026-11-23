@@ -1,3 +1,4 @@
+import { SUPER_ADMIN_ROLE_CODE } from '@byke-os/shared';
 import { router } from 'expo-router';
 import { useState } from 'react';
 import { StyleSheet, View } from 'react-native';
@@ -12,20 +13,23 @@ import { PageHeader } from '@/components/ui/page-header';
 import { Screen } from '@/components/ui/screen';
 import { SectionLabel } from '@/components/ui/section-label';
 import { Colors, FontFamily, Radius, Spacing } from '@/constants/theme';
-import { useAuth } from '@/features/auth';
+import { useAuth, useIsSuperAdmin, usePermission } from '@/features/auth';
 import { useHotel } from '@/features/hotels';
 
 export default function ProfileScreen() {
   const { user, logout } = useAuth();
   const { hotel } = useHotel();
   const [confirmOpen, setConfirmOpen] = useState(false);
+  const canHotels = usePermission('view-hotel');
+  const canUsers = usePermission('view-user');
+  const isSuperAdmin = useIsSuperAdmin();
   if (!user) return null;
 
   return (
     <Screen
       tabs
       header={
-        <PageHeader back title="Profile">
+        <PageHeader back title="Settings">
           <View style={styles.me}>
             <View style={styles.ring}>
               <Avatar name={user.name} size={76} inverted />
@@ -61,29 +65,46 @@ export default function ProfileScreen() {
           subtitle="Change it from the Home screen"
           value={hotel?.name ?? 'None'}
         />
-      </CardList>
-
-      <SectionLabel title="Administration" />
-      <CardList>
         <ListRow
           icon="hotel"
-          title="Hotels"
-          subtitle="Properties, locations and timings"
-          onPress={() => router.push('/hotels')}
-        />
-        <ListRow
-          icon="users"
-          title="Users"
-          subtitle="Add people and give them a role"
-          onPress={() => router.navigate('/users')}
-        />
-        <ListRow
-          icon="roles"
-          title="Roles"
-          subtitle="Job roles such as GM or Head of Department"
-          onPress={() => router.push('/roles')}
+          title="Your hotels"
+          subtitle={
+            user.role?.code === SUPER_ADMIN_ROLE_CODE
+              ? 'Super Admin: every hotel'
+              : user.hotels.map((h) => h.name).join(', ') || 'None yet. Ask your admin'
+          }
         />
       </CardList>
+
+      {canHotels || canUsers || isSuperAdmin ? <SectionLabel title="Administration" /> : null}
+      {canHotels || canUsers || isSuperAdmin ? (
+        <CardList>
+          {canHotels ? (
+            <ListRow
+              icon="hotel"
+              title="Hotels"
+              subtitle="Properties, locations and timings"
+              onPress={() => router.push('/hotels')}
+            />
+          ) : null}
+          {canUsers ? (
+            <ListRow
+              icon="users"
+              title="Users"
+              subtitle="Add people and give them a role"
+              onPress={() => router.navigate('/users')}
+            />
+          ) : null}
+          {isSuperAdmin ? (
+            <ListRow
+              icon="roles"
+              title="Roles"
+              subtitle="Job roles such as GM or Head of Department"
+              onPress={() => router.push('/roles')}
+            />
+          ) : null}
+        </CardList>
+      ) : null}
 
       <Button
         title="Log out"

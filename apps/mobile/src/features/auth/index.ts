@@ -4,3 +4,5 @@ export { AuthProvider, type AuthStatus } from './context/auth-provider';
 export { useAuth } from './hooks/use-auth';
 export { LoginForm } from './components/login-form';
 export { ChangePasswordForm } from './components/change-password-form';
+export { Can } from './components/can';
+export { useAnyPermission, useIsSuperAdmin, usePermission } from './hooks/use-permission';

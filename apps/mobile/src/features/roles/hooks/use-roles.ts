@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import type { Role } from '@byke-os/shared';
+import type { Role, RoleSummary } from '@byke-os/shared';
 
 import { useDebouncedValue } from '@/hooks/use-debounced-value';
 import { usePagedList } from '@/hooks/use-paged-list';
@@ -14,23 +14,23 @@ export function useRoleList(search: string) {
 }
 
 /**
- * All roles in one go, for pickers (role field, role filter). The API caps a page at
- * 100; Byke has a handful of roles, so one page is enough.
+ * Active roles (names only) for pickers: the role field and the role filter. Available to anyone
+ * who can see or add users; the full roles list is Super Admin only.
  */
-export function useRoleOptions({ activeOnly = false } = {}) {
-  const [roles, setRoles] = useState<Role[]>([]);
+export function useRoleOptions() {
+  const [roles, setRoles] = useState<RoleSummary[]>([]);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
     rolesApi
-      .list({ limit: 100, ...(activeOnly && { isActive: true }) })
-      .then((data) => !cancelled && setRoles(data.items))
+      .options()
+      .then((data) => !cancelled && setRoles(data))
       .catch((e) => !cancelled && setError(errorMessage(e)));
     return () => {
       cancelled = true;
     };
-  }, [activeOnly]);
+  }, []);
 
   return { roles, error };
 }

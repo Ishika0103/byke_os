@@ -13,7 +13,7 @@ export function HotelListItem({ hotel, onPress }: { hotel: Hotel; onPress: () =>
       trailing={<StatusPill active={hotel.isActive} />}
       chevron={false}
       onPress={onPress}
-      accessibilityLabel={`${hotel.name}, ${hotel.location.city}, ${hotel.isActive ? 'active' : 'inactive'}`}
+      accessibilityLabel={`${hotel.name}, ${hotel.location.name}, ${hotel.isActive ? 'active' : 'inactive'}`}
     />
   );
 }

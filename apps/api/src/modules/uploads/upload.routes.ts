@@ -1,5 +1,6 @@
 import { Router, type RequestHandler } from 'express';
 import multer from 'multer';
+import { authorize } from '../../middlewares/authorize';
 import { AppError } from '../../utils/app-error';
 import { requireHotel } from '../hotels/hotel-param';
 import { uploadController } from './upload.controller';
@@ -29,4 +30,5 @@ const parseFile: RequestHandler = (req, res, next) => {
 export const uploadRouter = Router({ mergeParams: true });
 
 uploadRouter.use(requireHotel);
-uploadRouter.post('/', parseFile, uploadController.create);
+// Proof photos are part of acting on a task.
+uploadRouter.post('/', authorize('edit-task'), parseFile, uploadController.create);

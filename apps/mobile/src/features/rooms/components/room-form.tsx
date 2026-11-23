@@ -1,3 +1,5 @@
+import { usePermission } from '@/features/auth';
+import { ReadOnly } from '@/components/ui/read-only';
 import { useState, type ReactNode } from 'react';
 import { createRoomSchema, updateRoomSchema, type Room } from '@byke-os/shared';
 
@@ -35,6 +37,9 @@ export function RoomForm({
   children?: ReactNode;
 }) {
   const editing = !!room;
+  // Without the edit permission an existing record is shown read-only (Plan 06).
+  const canEdit = usePermission('edit-room');
+  const locked = editing && !canEdit;
   const types = useRoomTypeOptions(hotelId);
   const [roomNumber, setRoomNumber] = useState(room?.roomNumber ?? '');
   const [roomTypeId, setRoomTypeId] = useState<string | null>(room?.roomType?.id ?? null);
@@ -108,92 +113,94 @@ export function RoomForm({
     <Screen
       header={header}
       footer={
-        <Button
-          title={editing ? 'Save changes' : 'Create room'}
-          icon={editing ? 'check' : 'add'}
-          onPress={save}
-          loading={saving}
-        />
+        locked ? undefined : (
+          <Button
+            title={editing ? 'Save changes' : 'Create room'}
+            icon={editing ? 'check' : 'add'}
+            onPress={save}
+            loading={saving}
+          />
+        )
       }
     >
       {formError ? <Banner message={formError} /> : null}
-
-      <SectionLabel title="Details" />
-      <Card>
-        <TextField
-          label="Room number"
-          value={roomNumber}
-          onChangeText={setRoomNumber}
-          error={errors.roomNumber}
-          placeholder="e.g. 101"
-          autoCapitalize="characters"
-          editable={!saving}
-        />
-        <SelectField
-          label="Room type"
-          value={roomTypeId}
-          options={typeOptions}
-          onChange={(v) => {
-            setRoomTypeId(v);
-            setErrors((e) => ({ ...e, roomTypeId: undefined }));
-          }}
-          placeholder={
-            types.loading
-              ? 'Loading…'
-              : types.options.length
-                ? 'Choose a room type'
-                : 'Add a room type first'
-          }
-          error={errors.roomTypeId}
-          disabled={saving || types.loading}
-          searchable={typeOptions.length > 6}
-        />
-        <TextField
-          label="Floor (optional)"
-          value={floorText}
-          onChangeText={setFloorText}
-          error={errors.floor}
-          placeholder="e.g. 1   (0 = ground)"
-          keyboardType="numbers-and-punctuation"
-          editable={!saving}
-        />
-      </Card>
-
-      <SectionLabel title="Operations" />
-      <Card>
-        <SwitchField
-          label="Sellable"
-          description={
-            isSellable
-              ? 'Counted in inventory and sold to guests'
-              : 'Staff, owner or store room; left out of inventory'
-          }
-          value={isSellable}
-          onChange={setIsSellable}
-          disabled={saving}
-        />
-        <TextField
-          label="Notes (optional)"
-          value={notes}
-          onChangeText={setNotes}
-          error={errors.notes}
-          placeholder="e.g. Geyser weak, valley view"
-          multiline
-          editable={!saving}
-        />
-      </Card>
-
-      {editing ? null : (
-        <>
-          <SectionLabel title="Status" />
-          <StatusToggle
-            active={isActive}
-            onChange={setIsActive}
-            description={isActive ? 'In use at the hotel' : 'Not in use for now'}
+      <ReadOnly locked={locked}>
+        <SectionLabel title="Details" />
+        <Card>
+          <TextField
+            label="Room number"
+            value={roomNumber}
+            onChangeText={setRoomNumber}
+            error={errors.roomNumber}
+            placeholder="e.g. 101"
+            autoCapitalize="characters"
+            editable={!saving}
           />
-        </>
-      )}
+          <SelectField
+            label="Room type"
+            value={roomTypeId}
+            options={typeOptions}
+            onChange={(v) => {
+              setRoomTypeId(v);
+              setErrors((e) => ({ ...e, roomTypeId: undefined }));
+            }}
+            placeholder={
+              types.loading
+                ? 'Loading…'
+                : types.options.length
+                  ? 'Choose a room type'
+                  : 'Add a room type first'
+            }
+            error={errors.roomTypeId}
+            disabled={saving || types.loading}
+            searchable={typeOptions.length > 6}
+          />
+          <TextField
+            label="Floor (optional)"
+            value={floorText}
+            onChangeText={setFloorText}
+            error={errors.floor}
+            placeholder="e.g. 1   (0 = ground)"
+            keyboardType="numbers-and-punctuation"
+            editable={!saving}
+          />
+        </Card>
 
+        <SectionLabel title="Operations" />
+        <Card>
+          <SwitchField
+            label="Sellable"
+            description={
+              isSellable
+                ? 'Counted in inventory and sold to guests'
+                : 'Staff, owner or store room; left out of inventory'
+            }
+            value={isSellable}
+            onChange={setIsSellable}
+            disabled={saving}
+          />
+          <TextField
+            label="Notes (optional)"
+            value={notes}
+            onChangeText={setNotes}
+            error={errors.notes}
+            placeholder="e.g. Geyser weak, valley view"
+            multiline
+            editable={!saving}
+          />
+        </Card>
+
+        {editing ? null : (
+          <>
+            <SectionLabel title="Status" />
+            <StatusToggle
+              active={isActive}
+              onChange={setIsActive}
+              description={isActive ? 'In use at the hotel' : 'Not in use for now'}
+            />
+          </>
+        )}
+      </ReadOnly>
       {children}
     </Screen>
   );

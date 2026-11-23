@@ -86,3 +86,29 @@ export type Room = BaseEntity & {
   isSellable: boolean;
   notes: string | null;
 };
+
+/** Rooms Excel import (Plan 07). */
+export type RoomImportAction = 'create' | 'update' | 'unchanged' | 'rejected';
+
+export type RoomImportRow = {
+  /** Row number in the Excel file. */
+  row: number;
+  hotelCode: string;
+  roomTypeCode: string;
+  roomNumber: string;
+  action: RoomImportAction;
+  errors: string[];
+};
+
+export type RoomImportPreview = {
+  counts: Record<RoomImportAction, number>;
+  rows: RoomImportRow[];
+};
+
+export type RoomImportResult = {
+  created: number;
+  updated: number;
+  unchanged: number;
+  rejected: number;
+  rejectedRows: RoomImportRow[];
+};

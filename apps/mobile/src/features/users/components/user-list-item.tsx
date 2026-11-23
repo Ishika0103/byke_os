@@ -4,7 +4,7 @@ import { Avatar } from '@/components/ui/avatar';
 import { ListRow } from '@/components/ui/list-row';
 import { StatusPill } from '@/components/ui/status-pill';
 
-/** Name (and "you"), "Role · email" underneath, and a green Active / red Inactive pill. */
+/** Name (and "you"), "Role · email · hotel codes" underneath, and an Active / Inactive pill. */
 export function UserListItem({
   user,
   isSelf,
@@ -18,7 +18,13 @@ export function UserListItem({
     <ListRow
       leading={<Avatar name={user.name} muted={!user.isActive} />}
       title={isSelf ? `${user.name} (you)` : user.name}
-      subtitle={`${user.role?.name ?? 'No role'} · ${user.email}`}
+      subtitle={[
+        user.role?.name ?? 'No role',
+        user.email,
+        user.hotels.map((h) => h.code).join(', '),
+      ]
+        .filter(Boolean)
+        .join(' · ')}
       trailing={<StatusPill active={user.isActive} />}
       chevron={false}
       onPress={onPress}

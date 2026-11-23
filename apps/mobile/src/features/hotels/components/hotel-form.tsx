@@ -1,17 +1,14 @@
+import { usePermission } from '@/features/auth';
+import { ReadOnly } from '@/components/ui/read-only';
 import { useState, type ReactNode } from 'react';
 import { StyleSheet, View } from 'react-native';
-import {
-  INDIAN_CITIES,
-  createHotelSchema,
-  updateHotelSchema,
-  type CityLocation,
-  type Hotel,
-} from '@byke-os/shared';
+import { createHotelSchema, updateHotelSchema, type Hotel } from '@byke-os/shared';
 
 import { Banner } from '@/components/ui/banner';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import type { Option } from '@/components/ui/option-dialog';
+import { useLocationOptions } from '@/features/locations';
 import { Screen } from '@/components/ui/screen';
 import { SectionLabel } from '@/components/ui/section-label';
 import { SelectField } from '@/components/ui/select-field';
@@ -23,17 +20,6 @@ import { hotelsApi } from '../api/hotels.api';
 import { TIME_OPTIONS } from '../utils/time';
 
 const CODE_FIELDS = { NAME_TAKEN: 'name' };
-
-const cityKey = (c: CityLocation) => `${c.city}|${c.state}`;
-const CITY_OPTIONS: Option[] = INDIAN_CITIES.map((c) => ({
-  value: cityKey(c),
-  label: c.city,
-  description: c.state,
-}));
-const cityFromKey = (key: string): CityLocation => {
-  const [city, state] = key.split('|');
-  return { city, state };
-};
 
 /**
  * Add hotel (no `hotel`) or edit hotel, as a full screen with Save pinned at the bottom.
@@ -52,9 +38,18 @@ export function HotelForm({
   children?: ReactNode;
 }) {
   const editing = !!hotel;
+  // Without the edit permission an existing record is shown read-only (Plan 06).
+  const canEdit = usePermission('edit-hotel');
+  const locked = editing && !canEdit;
   const [name, setName] = useState(hotel?.name ?? '');
   const [isActive, setIsActive] = useState(true);
-  const [location, setLocation] = useState<string | null>(hotel ? cityKey(hotel.location) : null);
+  const [locationId, setLocationId] = useState<string | null>(hotel?.location.id ?? null);
+  const locations = useLocationOptions();
+  const locationOptions: Option[] = locations.map((l) => ({
+    value: l.id,
+    label: l.name,
+    description: l.state,
+  }));
   const [checkInTime, setCheckInTime] = useState(hotel?.checkInTime ?? '14:00');
   const [checkOutTime, setCheckOutTime] = useState(hotel?.checkOutTime ?? '11:00');
   const [errors, setErrors] = useState<FieldErrors>({});
@@ -63,13 +58,12 @@ export function HotelForm({
 
   async function save() {
     setFormError(null);
-    const loc = location ? cityFromKey(location) : undefined;
     try {
       if (hotel) {
         // Send only what changed.
         const changes = {
           ...(name.trim() !== hotel.name && { name }),
-          ...(location !== cityKey(hotel.location) && { location: loc }),
+          ...(locationId !== hotel.location.id && { locationId }),
           ...(checkInTime !== hotel.checkInTime && { checkInTime }),
           ...(checkOutTime !== hotel.checkOutTime && { checkOutTime }),
         };
@@ -82,14 +76,14 @@ export function HotelForm({
       } else {
         const parsed = createHotelSchema.safeParse({
           name,
-          location: loc,
+          locationId,
           checkInTime,
           checkOutTime,
           isActive,
         });
         if (!parsed.success) {
           const fieldErrors = issuesToFieldErrors(parsed.error.issues);
-          if (!loc) fieldErrors.location = 'Choose a city';
+          if (!locationId) fieldErrors.locationId = 'Choose a location';
           return setErrors(fieldErrors);
         }
         setErrors({});
@@ -109,89 +103,91 @@ export function HotelForm({
     <Screen
       header={header}
       footer={
-        <Button
-          title={editing ? 'Save changes' : 'Create hotel'}
-          icon={editing ? 'check' : 'add'}
-          onPress={save}
-          loading={saving}
-        />
+        locked ? undefined : (
+          <Button
+            title={editing ? 'Save changes' : 'Create hotel'}
+            icon={editing ? 'check' : 'add'}
+            onPress={save}
+            loading={saving}
+          />
+        )
       }
     >
       {formError ? <Banner message={formError} /> : null}
-
-      <SectionLabel title="Details" />
-      <Card>
-        <TextField
-          label="Hotel name"
-          value={name}
-          onChangeText={setName}
-          error={errors.name}
-          placeholder="e.g. The Byke Brightland Resort"
-          hint={editing ? undefined : 'A short code is made from the name, e.g. BRG.'}
-          autoCapitalize="words"
-          editable={!saving}
-        />
-        {hotel ? (
+      <ReadOnly locked={locked}>
+        <SectionLabel title="Details" />
+        <Card>
           <TextField
-            label="Code"
-            value={hotel.code}
-            hint="Made from the hotel name when it was created. It can't be changed."
-            editable={false}
+            label="Hotel name"
+            value={name}
+            onChangeText={setName}
+            error={errors.name}
+            placeholder="e.g. The Byke Brightland Resort"
+            hint={editing ? undefined : 'A short code is made from the name, e.g. BRG.'}
+            autoCapitalize="words"
+            editable={!saving}
           />
-        ) : null}
-        <SelectField
-          label="Location"
-          value={location}
-          options={CITY_OPTIONS}
-          onChange={(v) => {
-            setLocation(v);
-            setErrors((e) => ({ ...e, location: undefined }));
-          }}
-          placeholder="Choose a city"
-          error={errors.location}
-          disabled={saving}
-          searchable
-          searchPlaceholder="Search city or state"
-        />
-      </Card>
-
-      <SectionLabel title="Timings" />
-      <Card>
-        <View style={styles.times}>
-          <View style={styles.time}>
-            <SelectField
-              label="Check-in"
-              value={checkInTime}
-              options={TIME_OPTIONS}
-              onChange={setCheckInTime}
-              error={errors.checkInTime}
-              disabled={saving}
+          {hotel ? (
+            <TextField
+              label="Code"
+              value={hotel.code}
+              hint="Made from the hotel name when it was created. It can't be changed."
+              editable={false}
             />
-          </View>
-          <View style={styles.time}>
-            <SelectField
-              label="Check-out"
-              value={checkOutTime}
-              options={TIME_OPTIONS}
-              onChange={setCheckOutTime}
-              error={errors.checkOutTime}
-              disabled={saving}
-            />
-          </View>
-        </View>
-      </Card>
-
-      {editing ? null : (
-        <>
-          <SectionLabel title="Status" />
-          <StatusToggle
-            active={isActive}
-            onChange={setIsActive}
-            description={isActive ? 'Shown in the hotel picker' : 'Hidden from the hotel picker'}
+          ) : null}
+          <SelectField
+            label="Location"
+            value={locationId}
+            options={locationOptions}
+            onChange={(v) => {
+              setLocationId(v);
+              setErrors((e) => ({ ...e, locationId: undefined }));
+            }}
+            placeholder="Choose a location"
+            error={errors.locationId}
+            disabled={saving}
+            searchable
+            searchPlaceholder="Search location or state"
           />
-        </>
-      )}
+        </Card>
 
+        <SectionLabel title="Timings" />
+        <Card>
+          <View style={styles.times}>
+            <View style={styles.time}>
+              <SelectField
+                label="Check-in"
+                value={checkInTime}
+                options={TIME_OPTIONS}
+                onChange={setCheckInTime}
+                error={errors.checkInTime}
+                disabled={saving}
+              />
+            </View>
+            <View style={styles.time}>
+              <SelectField
+                label="Check-out"
+                value={checkOutTime}
+                options={TIME_OPTIONS}
+                onChange={setCheckOutTime}
+                error={errors.checkOutTime}
+                disabled={saving}
+              />
+            </View>
+          </View>
+        </Card>
+
+        {editing ? null : (
+          <>
+            <SectionLabel title="Status" />
+            <StatusToggle
+              active={isActive}
+              onChange={setIsActive}
+              description={isActive ? 'Shown in the hotel picker' : 'Hidden from the hotel picker'}
+            />
+          </>
+        )}
+      </ReadOnly>
       {children}
     </Screen>
   );

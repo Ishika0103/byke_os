@@ -2,6 +2,7 @@ import { departmentLabel, OPEN_STAGES } from '@byke-os/shared';
 import { router, useLocalSearchParams } from 'expo-router';
 import { StyleSheet, View } from 'react-native';
 
+import { Can } from '@/features/auth';
 import { ThemedText } from '@/components/themed-text';
 import { Banner } from '@/components/ui/banner';
 import { Card } from '@/components/ui/card';
@@ -64,13 +65,15 @@ export default function TaskScreen() {
           subtitle={departmentLabel(task.department)}
           right={
             open ? (
-              <HeaderButton
-                icon="edit"
-                label="Edit task"
-                onPress={() =>
-                  router.push({ pathname: '/tasks/[id]/edit', params: { id: task.id, hotelId } })
-                }
-              />
+              <Can permission="edit-task">
+                <HeaderButton
+                  icon="edit"
+                  label="Edit task"
+                  onPress={() =>
+                    router.push({ pathname: '/tasks/[id]/edit', params: { id: task.id, hotelId } })
+                  }
+                />
+              </Can>
             ) : undefined
           }
         />
@@ -96,7 +99,9 @@ export default function TaskScreen() {
         <Banner tone="info" message={`Blocked: ${task.blockedReason}`} />
       ) : null}
 
-      <TaskActions hotelId={hotelId} task={task} onChanged={setTask} />
+      <Can permission="edit-task">
+        <TaskActions hotelId={hotelId} task={task} onChanged={setTask} />
+      </Can>
 
       <SectionLabel title="Details" />
       <Card>

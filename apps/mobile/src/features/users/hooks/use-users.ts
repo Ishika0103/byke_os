@@ -8,14 +8,15 @@ import { usersApi } from '../api/users.api';
 
 export type UserStatusFilter = 'all' | 'active';
 
-/** Users list screen: search, role and status filters, paging. */
+/** Users list screen: search, role, hotel and status filters, paging. */
 export function useUserList(filters: {
   search: string;
   roleId: string | null;
+  hotelId: string | null;
   status: UserStatusFilter;
 }) {
   const q = useDebouncedValue(filters.search.trim());
-  const { roleId, status } = filters;
+  const { roleId, hotelId, status } = filters;
   const fetchPage = useCallback(
     (page: number) =>
       usersApi.list({
@@ -23,9 +24,10 @@ export function useUserList(filters: {
         limit: 20,
         q,
         roleId: roleId ?? undefined,
+        hotelId: hotelId ?? undefined,
         isActive: status === 'active' ? true : undefined,
       }),
-    [q, roleId, status],
+    [q, roleId, hotelId, status],
   );
   return usePagedList(fetchPage);
 }

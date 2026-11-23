@@ -3,6 +3,7 @@ import { router, useLocalSearchParams } from 'expo-router';
 import { useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 
+import { Can } from '@/features/auth';
 import { useTabBarSpace } from '@/components/app-tab-bar';
 import { Chip } from '@/components/ui/chip';
 import { EmptyState } from '@/components/ui/empty-state';
@@ -49,7 +50,9 @@ export default function TasksScreen() {
         subtitle={hotel?.name ?? 'No hotel selected'}
         right={
           hotel ? (
-            <HeaderButton icon="add" label="Add task" onPress={() => router.push('/tasks/new')} />
+            <Can permission="add-task">
+              <HeaderButton icon="add" label="Add task" onPress={() => router.push('/tasks/new')} />
+            </Can>
           ) : undefined
         }
       >

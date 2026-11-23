@@ -1,3 +1,5 @@
+import { usePermission } from '@/features/auth';
+import { ReadOnly } from '@/components/ui/read-only';
 import { useState, type ReactNode } from 'react';
 import { createRoomTypeSchema, updateRoomTypeSchema, type RoomType } from '@byke-os/shared';
 
@@ -32,6 +34,9 @@ export function RoomTypeForm({
   children?: ReactNode;
 }) {
   const editing = !!roomType;
+  // Without the edit permission an existing record is shown read-only (Plan 06).
+  const canEdit = usePermission('edit-room-type');
+  const locked = editing && !canEdit;
   const [name, setName] = useState(roomType?.name ?? '');
   const [pmsCode, setPmsCode] = useState(roomType?.pmsCode ?? '');
   const [minutes, setMinutes] = useState(roomType?.cleaningMinutes?.toString() ?? '');
@@ -85,75 +90,77 @@ export function RoomTypeForm({
     <Screen
       header={header}
       footer={
-        <Button
-          title={editing ? 'Save changes' : 'Create room type'}
-          icon={editing ? 'check' : 'add'}
-          onPress={save}
-          loading={saving}
-        />
+        locked ? undefined : (
+          <Button
+            title={editing ? 'Save changes' : 'Create room type'}
+            icon={editing ? 'check' : 'add'}
+            onPress={save}
+            loading={saving}
+          />
+        )
       }
     >
       {formError ? <Banner message={formError} /> : null}
-
-      <SectionLabel title="Details" />
-      <Card>
-        <TextField
-          label="Name"
-          value={name}
-          onChangeText={setName}
-          error={errors.name}
-          placeholder="e.g. Deluxe Room"
-          hint={editing ? undefined : 'A short code is made from the name, e.g. DLX.'}
-          autoCapitalize="words"
-          editable={!saving}
-        />
-        {roomType ? (
+      <ReadOnly locked={locked}>
+        <SectionLabel title="Details" />
+        <Card>
           <TextField
-            label="Code"
-            value={roomType.code}
-            hint="Made from the name when it was created. It can't be changed."
-            editable={false}
+            label="Name"
+            value={name}
+            onChangeText={setName}
+            error={errors.name}
+            placeholder="e.g. Deluxe Room"
+            hint={editing ? undefined : 'A short code is made from the name, e.g. DLX.'}
+            autoCapitalize="words"
+            editable={!saving}
           />
-        ) : null}
-      </Card>
+          {roomType ? (
+            <TextField
+              label="Code"
+              value={roomType.code}
+              hint="Made from the name when it was created. It can't be changed."
+              editable={false}
+            />
+          ) : null}
+        </Card>
 
-      <SectionLabel title="Operations" />
-      <Card>
-        <TextField
-          label="PMS code (optional)"
-          value={pmsCode}
-          onChangeText={setPmsCode}
-          error={errors.pmsCode}
-          placeholder="e.g. DLXK"
-          hint="The code for this room type in the PMS, to match its reports."
-          autoCapitalize="characters"
-          editable={!saving}
-        />
-        <TextField
-          label="Cleaning time in minutes (optional)"
-          value={minutes}
-          onChangeText={setMinutes}
-          error={errors.cleaningMinutes}
-          placeholder="e.g. 30"
-          hint="Standard time to clean one room, used for cleaning deadlines."
-          keyboardType="number-pad"
-          editable={!saving}
-        />
-      </Card>
-
-      {editing ? null : (
-        <>
-          <SectionLabel title="Status" />
-          <StatusToggle
-            active={isActive}
-            onChange={setIsActive}
-            description={
-              isActive ? 'Rooms can be added to it' : "Rooms can't be added to it for now"
-            }
+        <SectionLabel title="Operations" />
+        <Card>
+          <TextField
+            label="PMS code (optional)"
+            value={pmsCode}
+            onChangeText={setPmsCode}
+            error={errors.pmsCode}
+            placeholder="e.g. DLXK"
+            hint="The code for this room type in the PMS, to match its reports."
+            autoCapitalize="characters"
+            editable={!saving}
           />
-        </>
-      )}
+          <TextField
+            label="Cleaning time in minutes (optional)"
+            value={minutes}
+            onChangeText={setMinutes}
+            error={errors.cleaningMinutes}
+            placeholder="e.g. 30"
+            hint="Standard time to clean one room, used for cleaning deadlines."
+            keyboardType="number-pad"
+            editable={!saving}
+          />
+        </Card>
 
+        {editing ? null : (
+          <>
+            <SectionLabel title="Status" />
+            <StatusToggle
+              active={isActive}
+              onChange={setIsActive}
+              description={
+                isActive ? 'Rooms can be added to it' : "Rooms can't be added to it for now"
+              }
+            />
+          </>
+        )}
+      </ReadOnly>
       {children}
     </Screen>
   );

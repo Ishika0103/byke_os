@@ -40,3 +40,22 @@ export function useHotelDetail(id: string) {
     },
   };
 }
+
+/** Every hotel (active or not) the user can see, for pickers such as a user's hotels. */
+export function useHotelOptions() {
+  const [hotels, setHotels] = useState<Hotel[]>([]);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    hotelsApi
+      .list({ limit: 100 })
+      .then((data) => !cancelled && setHotels(data.items))
+      .catch((e) => !cancelled && setError(errorMessage(e)));
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  return { hotels, error };
+}

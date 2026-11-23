@@ -123,7 +123,7 @@ Lists sort overdue first, then by due time. `view=open` = pending / in progress 
 
 ## 6. App
 
-**New Tasks tab** in place of the Roles tab. Roles move to Profile → Administration, next to Hotels.
+**New Tasks tab** in place of the Roles tab. Roles move to Settings → Administration, next to Hotels.
 
 | Screen          | Contents                                                                                                                                                                                                               |
 | --------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |

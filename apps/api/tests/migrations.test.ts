@@ -30,9 +30,11 @@ describe('migrations', () => {
   it('created the expected indexes', async () => {
     const names = async (c: string) => (await getDb().collection(c).indexes()).map((i) => i.name);
     expect(await names('roles')).toEqual(expect.arrayContaining(['code_unique', 'name_unique_ci']));
-    expect(await names('users')).toEqual(expect.arrayContaining(['email_unique', 'roleId_1']));
+    expect(await names('users')).toEqual(
+      expect.arrayContaining(['email_unique', 'roleId_1', 'hotelIds_1']),
+    );
     expect(await names('hotels')).toEqual(
-      expect.arrayContaining(['code_unique', 'name_unique_ci', 'location_city']),
+      expect.arrayContaining(['code_unique', 'name_unique_ci', 'locationId_1']),
     );
     expect(await names('roomTypes')).toEqual(
       expect.arrayContaining(['hotel_code_unique', 'hotel_name_unique_ci']),

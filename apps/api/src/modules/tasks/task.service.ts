@@ -26,6 +26,7 @@ import { AppError } from '../../utils/app-error';
 import { escapeRegex } from '../../utils/query';
 import { RoomModel } from '../rooms/room.model';
 import { UserModel } from '../users/user.model';
+import { isSuperAdminRole } from '../users/user.service';
 import { TaskModel, TaskUpdateModel } from './task.model';
 
 type Id = Types.ObjectId;
@@ -156,10 +157,16 @@ async function assertRoom(hotelId: string, roomId: string | null | undefined) {
   }
 }
 
-async function assertAssignee(userId: string | null | undefined) {
+/** The assignee must be active and work at this hotel (Plan 05; Super Admin works everywhere). */
+async function assertAssignee(hotelId: string, userId: string | null | undefined) {
   if (!userId) return;
-  if (!(await UserModel.exists({ _id: userId, isActive: true }))) {
-    throw AppError.field('assigneeId', 'User not found or inactive');
+  const user = await UserModel.findOne({ _id: userId, isActive: true })
+    .select('roleId hotelIds')
+    .lean<{ roleId: Id; hotelIds?: Id[] }>();
+  if (!user) throw AppError.field('assigneeId', 'User not found or inactive');
+  const atHotel = (user.hotelIds ?? []).some((h) => String(h) === hotelId);
+  if (!atHotel && !(await isSuperAdminRole(String(user.roleId)))) {
+    throw AppError.field('assigneeId', 'This person is not added to this hotel');
   }
 }
 
@@ -259,7 +266,10 @@ export const taskService = {
   },
 
   async create(hotelId: string, input: CreateTaskInput, actorId: string): Promise<TaskDetail> {
-    await Promise.all([assertRoom(hotelId, input.roomId), assertAssignee(input.assigneeId)]);
+    await Promise.all([
+      assertRoom(hotelId, input.roomId),
+      assertAssignee(hotelId, input.assigneeId),
+    ]);
     const task = await TaskModel.create({
       ...input,
       dueAt: new Date(input.dueAt),
@@ -287,7 +297,7 @@ export const taskService = {
       await assertRoom(hotelId, input.roomId);
     }
     if (input.assigneeId !== undefined && input.assigneeId !== key(task.assigneeId)) {
-      await assertAssignee(input.assigneeId);
+      await assertAssignee(hotelId, input.assigneeId);
     }
 
     const set: Record<string, unknown> = {};

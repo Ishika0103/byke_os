@@ -14,6 +14,7 @@ const ICONS = {
   users: { ios: 'person.2', md: 'group' },
   roles: { ios: 'checkmark.shield', md: 'verified_user' },
   profile: { ios: 'person.crop.circle', md: 'account_circle' },
+  settings: { ios: 'gearshape', md: 'settings' },
   lock: { ios: 'lock', md: 'lock' },
   logout: { ios: 'rectangle.portrait.and.arrow.right', md: 'logout' },
   search: { ios: 'magnifyingglass', md: 'search' },
@@ -41,6 +42,8 @@ const ICONS = {
   block: { ios: 'hand.raised', md: 'block' },
   undo: { ios: 'arrow.uturn.backward', md: 'undo' },
   verified: { ios: 'checkmark.seal', md: 'verified' },
+  download: { ios: 'arrow.down.circle', md: 'download' },
+  upload: { ios: 'arrow.up.circle', md: 'upload_file' },
   clock: { ios: 'clock', md: 'schedule' },
 } as const satisfies Record<string, { ios: SFSymbol; md: string }>;
 

@@ -1,3 +1,4 @@
+import { SUPER_ADMIN_ROLE_CODE } from '@byke-os/shared';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useState } from 'react';
 
@@ -9,7 +10,9 @@ import { Screen } from '@/components/ui/screen';
 import { SectionLabel } from '@/components/ui/section-label';
 import { SkeletonList } from '@/components/ui/skeleton';
 import { StatusToggle } from '@/components/ui/status-toggle';
-import { RoleForm, rolesApi, useRole } from '@/features/roles';
+import { ThemedText } from '@/components/themed-text';
+import { Card } from '@/components/ui/card';
+import { PermissionGrid, RoleForm, rolesApi, useRole } from '@/features/roles';
 import { errorMessage } from '@/lib/form-errors';
 
 export default function EditRoleScreen() {
@@ -52,6 +55,19 @@ export default function EditRoleScreen() {
       header={<PageHeader back title={role.name} subtitle={role.code} />}
       onSaved={() => router.back()}
     >
+      {role.code === SUPER_ADMIN_ROLE_CODE ? (
+        <>
+          <SectionLabel title="Permissions" />
+          <Card>
+            <ThemedText themeColor="textSecondary">
+              Super Admin has every permission. This cannot be changed.
+            </ThemedText>
+          </Card>
+        </>
+      ) : (
+        <PermissionGrid role={role} onSaved={setRole} />
+      )}
+
       <SectionLabel title="Status" />
       <StatusToggle
         active={role.isActive}

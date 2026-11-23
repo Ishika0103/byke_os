@@ -1,6 +1,7 @@
 import { router, useLocalSearchParams } from 'expo-router';
 import { useState } from 'react';
 
+import { Can } from '@/features/auth';
 import { Button } from '@/components/ui/button';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { EmptyState } from '@/components/ui/empty-state';
@@ -54,32 +55,36 @@ export default function EditRoomScreen() {
       header={<PageHeader back title={title} subtitle={room.roomType?.name} />}
       onSaved={() => router.back()}
     >
-      <SectionLabel title="Status" />
-      <StatusToggle
-        active={room.isActive}
-        onChange={async (isActive) => setRoom(await roomsApi.update(id, roomId, { isActive }))}
-        description={room.isActive ? 'In use at the hotel' : 'Not in use for now'}
-        activate={{
-          title: `Make ${title} active?`,
-          message: 'It will be in use at the hotel again.',
-          confirmLabel: 'Make active',
-        }}
-        deactivate={{
-          title: `Make ${title} inactive?`,
-          message: 'Use this when a room is closed for a long time. Its data stays.',
-          confirmLabel: 'Make inactive',
-        }}
-      />
+      <Can permission="edit-room">
+        <SectionLabel title="Status" />
+        <StatusToggle
+          active={room.isActive}
+          onChange={async (isActive) => setRoom(await roomsApi.update(id, roomId, { isActive }))}
+          description={room.isActive ? 'In use at the hotel' : 'Not in use for now'}
+          activate={{
+            title: `Make ${title} active?`,
+            message: 'It will be in use at the hotel again.',
+            confirmLabel: 'Make active',
+          }}
+          deactivate={{
+            title: `Make ${title} inactive?`,
+            message: 'Use this when a room is closed for a long time. Its data stays.',
+            confirmLabel: 'Make inactive',
+          }}
+        />
+      </Can>
 
-      <Button
-        title="Delete room"
-        icon="delete"
-        variant="danger"
-        onPress={() => {
-          setDeleteError(null);
-          setDeleteOpen(true);
-        }}
-      />
+      <Can permission="delete-room">
+        <Button
+          title="Delete room"
+          icon="delete"
+          variant="danger"
+          onPress={() => {
+            setDeleteError(null);
+            setDeleteOpen(true);
+          }}
+        />
+      </Can>
       <ConfirmDialog
         visible={deleteOpen}
         title={`Delete ${title}?`}

@@ -1,3 +1,4 @@
+import { AppState } from 'react-native';
 import { createContext, useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
 import type { LoginInput, User } from '@byke-os/shared';
 import { session } from '@/lib/auth/session';
@@ -10,6 +11,8 @@ export type AuthContextValue = {
   user: User | null;
   login: (input: LoginInput) => Promise<void>;
   logout: () => Promise<void>;
+  /** Re-reads the user (role permissions, hotels) so changes by an admin show without signing in again. */
+  refreshUser: () => Promise<void>;
 };
 
 export const AuthContext = createContext<AuthContextValue | null>(null);
@@ -59,7 +62,27 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const logout = useCallback(() => session.end(), []);
 
-  const value = useMemo(() => ({ status, user, login, logout }), [status, user, login, logout]);
+  const refreshUser = useCallback(async () => {
+    try {
+      setUser(await authApi.me());
+    } catch {
+      // Offline or signed out meanwhile: keep what we have.
+    }
+  }, []);
+
+  // Coming back to the app: pick up permission changes made by an admin.
+  useEffect(() => {
+    if (status !== 'signedIn') return;
+    const sub = AppState.addEventListener('change', (next) => {
+      if (next === 'active') refreshUser();
+    });
+    return () => sub.remove();
+  }, [status, refreshUser]);
+
+  const value = useMemo(
+    () => ({ status, user, login, logout, refreshUser }),
+    [status, user, login, logout, refreshUser],
+  );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }

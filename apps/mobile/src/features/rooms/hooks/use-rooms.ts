@@ -1,3 +1,4 @@
+import { usePermission } from '@/features/auth';
 import { useFocusEffect } from 'expo-router';
 import { useCallback, useState } from 'react';
 
@@ -26,23 +27,31 @@ export function useRoomDetail(hotelId: string, id: string) {
   return { room: data, setRoom: setData, error, retry };
 }
 
-/** How many room types and rooms a hotel has; reloads whenever the screen comes back into view. */
+/**
+ * How many room types and rooms a hotel has, for Home and the hotel screen. Only asks for what the
+ * user may view (Plan 06): a missing permission just leaves that count out.
+ */
 export function useRoomCounts(hotelId: string | null | undefined) {
-  const [counts, setCounts] = useState<{ roomTypes: number; rooms: number } | null>(null);
+  const [counts, setCounts] = useState<{ roomTypes?: number; rooms?: number } | null>(null);
+  const canTypes = usePermission('view-room-type');
+  const canRooms = usePermission('view-room');
 
   useFocusEffect(
     useCallback(() => {
-      if (!hotelId) return setCounts(null);
+      if (!hotelId || (!canTypes && !canRooms)) return setCounts(null);
       let cancelled = false;
-      Promise.all([roomTypesApi.list(hotelId, { limit: 1 }), roomsApi.list(hotelId, { limit: 1 })])
+      Promise.all([
+        canTypes ? roomTypesApi.list(hotelId, { limit: 1 }) : null,
+        canRooms ? roomsApi.list(hotelId, { limit: 1 }) : null,
+      ])
         .then(([types, rooms]) => {
-          if (!cancelled) setCounts({ roomTypes: types.total, rooms: rooms.total });
+          if (!cancelled) setCounts({ roomTypes: types?.total, rooms: rooms?.total });
         })
         .catch(() => !cancelled && setCounts(null));
       return () => {
         cancelled = true;
       };
-    }, [hotelId]),
+    }, [hotelId, canTypes, canRooms]),
   );
 
   return counts;

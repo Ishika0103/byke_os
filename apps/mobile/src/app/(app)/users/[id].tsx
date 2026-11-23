@@ -11,7 +11,7 @@ import { Screen } from '@/components/ui/screen';
 import { SectionLabel } from '@/components/ui/section-label';
 import { SkeletonList } from '@/components/ui/skeleton';
 import { StatusToggle } from '@/components/ui/status-toggle';
-import { useAuth } from '@/features/auth';
+import { Can, useAuth } from '@/features/auth';
 import { ResetPasswordDialog, UserForm, usersApi, useUser } from '@/features/users';
 import { errorMessage } from '@/lib/form-errors';
 
@@ -60,48 +60,54 @@ export default function EditUserScreen() {
       header={<PageHeader back title={user.name} subtitle={user.email} />}
       onSaved={() => router.back()}
     >
-      <SectionLabel title="Status" />
-      <StatusToggle
-        active={user.isActive}
-        onChange={async (isActive) => setUser(await usersApi.update(user.id, { isActive }))}
-        description={
-          user.isActive ? 'Can sign in to Byke OS' : "Can't sign in until made active again"
-        }
-        disabledReason={isSelf ? "You can't make yourself inactive" : undefined}
-        activate={{
-          title: `Make ${user.name} active?`,
-          message: 'They will be able to sign in to Byke OS again.',
-          confirmLabel: 'Make active',
-        }}
-        deactivate={{
-          title: `Make ${user.name} inactive?`,
-          message:
-            "They won't be able to sign in until you make them active again. Their records stay.",
-          confirmLabel: 'Make inactive',
-        }}
-      />
-
-      <SectionLabel title="Security" />
-      <CardList>
-        <ListRow
-          icon="lock"
-          title="Reset password"
-          subtitle="Set a new password for this person"
-          onPress={() => setResetOpen(true)}
-        />
-      </CardList>
-
-      {isSelf ? null : (
-        <Button
-          title="Delete user"
-          icon="delete"
-          variant="danger"
-          onPress={() => {
-            setDeleteError(null);
-            setDeleteOpen(true);
+      <Can permission="edit-user">
+        <SectionLabel title="Status" />
+        <StatusToggle
+          active={user.isActive}
+          onChange={async (isActive) => setUser(await usersApi.update(user.id, { isActive }))}
+          description={
+            user.isActive ? 'Can sign in to Byke OS' : "Can't sign in until made active again"
+          }
+          disabledReason={isSelf ? "You can't make yourself inactive" : undefined}
+          activate={{
+            title: `Make ${user.name} active?`,
+            message: 'They will be able to sign in to Byke OS again.',
+            confirmLabel: 'Make active',
+          }}
+          deactivate={{
+            title: `Make ${user.name} inactive?`,
+            message:
+              "They won't be able to sign in until you make them active again. Their records stay.",
+            confirmLabel: 'Make inactive',
           }}
         />
-      )}
+      </Can>
+
+      <Can permission="edit-user">
+        <SectionLabel title="Security" />
+        <CardList>
+          <ListRow
+            icon="lock"
+            title="Reset password"
+            subtitle="Set a new password for this person"
+            onPress={() => setResetOpen(true)}
+          />
+        </CardList>
+      </Can>
+
+      <Can permission="delete-user">
+        {isSelf ? null : (
+          <Button
+            title="Delete user"
+            icon="delete"
+            variant="danger"
+            onPress={() => {
+              setDeleteError(null);
+              setDeleteOpen(true);
+            }}
+          />
+        )}
+      </Can>
 
       <ResetPasswordDialog user={user} visible={resetOpen} onClose={() => setResetOpen(false)} />
       <ConfirmDialog

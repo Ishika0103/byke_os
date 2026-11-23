@@ -4,3 +4,4 @@ export { useRoomCounts, useRoomDetail, useRoomList } from './hooks/use-rooms';
 export { RoomForm } from './components/room-form';
 export { BulkRoomsForm } from './components/bulk-rooms-form';
 export { RoomListItem } from './components/room-list-item';
+export { RoomImport } from './components/room-import';

@@ -42,7 +42,8 @@
           "photosPermission": "Byke OS uses your photos to attach proof when you finish a task.",
           "cameraPermission": "Byke OS uses the camera to take a photo as proof when you finish a task."
         }
-      ]
+      ],
+      "expo-sharing"
     ],
     "experiments": {
       "typedRoutes": true,

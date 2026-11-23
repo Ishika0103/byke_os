@@ -8,6 +8,10 @@ import { roleService } from './role.service';
 type IdParams = { id: string };
 
 export const roleController = {
+  async options(_req: Request, res: Response) {
+    ok(res, await roleService.options());
+  },
+
   async list(_req: Request, res: Response) {
     ok(res, await roleService.list(getQuery<typeof roleListQuerySchema>(res)));
   },

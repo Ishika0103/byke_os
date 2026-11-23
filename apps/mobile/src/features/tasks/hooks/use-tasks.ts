@@ -20,14 +20,17 @@ export function useTaskList(hotelId: string, filters: TaskFilters) {
   const { view, mine, department } = filters;
   const fetchPage = useCallback(
     (page: number) =>
-      tasksApi.list(hotelId, {
-        page,
-        limit: 30,
-        view,
-        q,
-        ...(mine && { assigneeId: 'me' }),
-        ...(department && { department }),
-      }),
+      // The hotel loads a moment after the app opens; don't ask the API for hotel "" meanwhile.
+      !hotelId
+        ? Promise.resolve({ items: [], page: 1, limit: 30, total: 0 })
+        : tasksApi.list(hotelId, {
+            page,
+            limit: 30,
+            view,
+            q,
+            ...(mine && { assigneeId: 'me' }),
+            ...(department && { department }),
+          }),
     [hotelId, view, mine, department, q],
   );
   return usePagedList(fetchPage);

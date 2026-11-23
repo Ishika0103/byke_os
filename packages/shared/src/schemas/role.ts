@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { permissionsSchema } from '../rbac/permissions';
 import { type BaseEntity, listQuerySchema, nameSchema } from './common';
 
 /** Role code of the top-level administrator. Used for the "last Super Admin" safety rule. */
@@ -22,6 +23,8 @@ export const updateRoleSchema = z
   .object({
     name: nameSchema(2, 50),
     isActive: z.boolean(),
+    /** Super Admin only; the Super Admin role's own permissions can't be changed. */
+    permissions: permissionsSchema,
   })
   .partial()
   .strict()
@@ -40,6 +43,8 @@ export type RoleListQuery = z.infer<typeof roleListQuerySchema>;
 export type Role = BaseEntity & {
   name: string;
   code: string;
+  /** Named permissions (Plan 06); Super Admin holds ['*']. */
+  permissions: string[];
 };
 
 export type RoleSummary = Pick<Role, 'id' | 'name' | 'code'>;

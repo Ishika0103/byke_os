@@ -1,7 +1,7 @@
 import request from 'supertest';
 import { describe, expect, it } from 'vitest';
 import { createApp } from '../src/app';
-import { createUser, login, signedInAs, useTestDatabase } from './helpers';
+import { createUser, login, signedInAs, useTestDatabase, locationId } from './helpers';
 
 useTestDatabase();
 
@@ -16,7 +16,7 @@ async function setup() {
   const admin = await signedInAs(app);
   const hotel = await admin.post('/api/v1/hotels', {
     name: 'Astara',
-    location: { city: 'Matheran', state: 'Maharashtra' },
+    locationId: await locationId(),
     checkInTime: '14:00',
     checkOutTime: '11:00',
   });
@@ -86,7 +86,7 @@ describe('tasks', () => {
 
     const other = await admin.post('/api/v1/hotels', {
       name: 'Old Anchor',
-      location: { city: 'Matheran', state: 'Maharashtra' },
+      locationId: await locationId(),
       checkInTime: '14:00',
       checkOutTime: '11:00',
     });

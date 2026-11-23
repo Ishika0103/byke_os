@@ -2,7 +2,15 @@ import { describe, expect, it } from 'vitest';
 import { createApp } from '../src/app';
 import { RoleModel } from '../src/modules/roles/role.model';
 import { UserModel } from '../src/modules/users/user.model';
-import { createUser, login, roleId, signedInAs, useTestDatabase } from './helpers';
+import {
+  createHotel,
+  createUser,
+  grant,
+  login,
+  roleId,
+  signedInAs,
+  useTestDatabase,
+} from './helpers';
 
 useTestDatabase();
 
@@ -12,6 +20,7 @@ const newUser = async (overrides: Record<string, unknown> = {}) => ({
   name: 'Priya Nair',
   email: 'priya@test.local',
   roleId: await roleId('HOD'),
+  hotelIds: [await createHotel()],
   password: 'Welcome123',
   ...overrides,
 });
@@ -107,7 +116,7 @@ describe('users CRUD', () => {
 
   it('updates name, email and role; never the password', async () => {
     const admin = await signedInAs(app);
-    const { id } = await createUser({ role: 'STAFF' });
+    const { id } = await createUser({ role: 'STAFF', hotelIds: [await createHotel()] });
 
     const res = await admin.patch(`/api/v1/users/${id}`, {
       name: 'Renamed',
@@ -136,19 +145,33 @@ describe('users CRUD', () => {
     expect((await admin.patch(self, { name: 'Me Again' })).status).toBe(200);
   });
 
-  it('protects the last active Super Admin', async () => {
+  it('only Super Admin can change, delete or reset a Super Admin (Plan 06)', async () => {
+    await grant('HO', ['view-user', 'add-user', 'edit-user', 'delete-user']);
     const ho = await signedInAs(app, 'HO');
-    const { id: onlyAdmin } = await createUser({ role: 'SUPER_ADMIN' });
+    const { id: target } = await createUser({ role: 'SUPER_ADMIN' });
+    const url = `/api/v1/users/${target}`;
 
-    expect((await ho.delete(`/api/v1/users/${onlyAdmin}`)).status).toBe(403);
-    expect((await ho.patch(`/api/v1/users/${onlyAdmin}`, { isActive: false })).status).toBe(403);
+    expect((await ho.delete(url)).status).toBe(403);
+    expect((await ho.patch(url, { isActive: false })).status).toBe(403);
+    expect((await ho.patch(url, { roleId: await roleId('GM') })).status).toBe(403);
+    expect((await ho.post(`${url}/reset-password`, { newPassword: 'NewPass123' })).status).toBe(
+      403,
+    );
+
+    // Nor can HO create a Super Admin, or promote someone to it.
+    const create = await ho.post(
+      '/api/v1/users',
+      await newUser({ roleId: await roleId('SUPER_ADMIN') }),
+    );
+    expect(create.status).toBe(403);
+    const { id: staff } = await createUser({ role: 'STAFF', hotelIds: [await createHotel()] });
     expect(
-      (await ho.patch(`/api/v1/users/${onlyAdmin}`, { roleId: await roleId('GM') })).status,
+      (await ho.patch(`/api/v1/users/${staff}`, { roleId: await roleId('SUPER_ADMIN') })).status,
     ).toBe(403);
 
-    // With a second active Super Admin, removing one is allowed.
-    await createUser({ role: 'SUPER_ADMIN' });
-    expect((await ho.delete(`/api/v1/users/${onlyAdmin}`)).status).toBe(204);
+    // A Super Admin can.
+    const admin = await signedInAs(app);
+    expect((await admin.delete(url)).status).toBe(204);
   });
 
   it('soft-deletes: hidden from the API, kept in the database, email reusable', async () => {

@@ -61,6 +61,27 @@ async function request<T>(path: string, init: RequestOptions = {}): Promise<T> {
   return body.data;
 }
 
+/** A file the API sent back (e.g. an Excel sheet), with its name. Errors still come as JSON. */
+async function requestFile(
+  path: string,
+  init: RequestOptions = {},
+): Promise<{ data: ArrayBuffer; fileName: string }> {
+  let res = await send(path, init);
+  if (res.status === 401 && !init.skipAuth) {
+    const newToken = await session.refresh();
+    if (newToken) res = await send(path, init);
+  }
+  if (!res.ok) {
+    const body = (await res.json()) as ApiResponse<never>;
+    if (!body.success) {
+      const { code, message, details } = body.error;
+      throw new ApiClientError(res.status, code, message, details as Record<string, string[]>);
+    }
+  }
+  const match = /filename="([^"]+)"/.exec(res.headers.get('Content-Disposition') ?? '');
+  return { data: await res.arrayBuffer(), fileName: match?.[1] ?? 'download.xlsx' };
+}
+
 export const apiClient = {
   get: <T>(path: string, opts?: RequestOptions) => request<T>(path, opts),
   post: <T>(path: string, data?: unknown, opts?: RequestOptions) =>
@@ -69,6 +90,11 @@ export const apiClient = {
     request<T>(path, { ...opts, method: 'PATCH', body: JSON.stringify(data) }),
   delete: <T = void>(path: string, opts?: RequestOptions) =>
     request<T>(path, { ...opts, method: 'DELETE' }),
+  /** GET a file (Excel download). */
+  file: (path: string, opts?: RequestOptions) => requestFile(path, opts),
+  /** POST a form and get a file back (Excel of rejected rows). */
+  uploadForFile: (path: string, form: FormData, opts?: RequestOptions) =>
+    requestFile(path, { ...opts, method: 'POST', body: form }),
   /** multipart/form-data POST, e.g. a photo upload. */
   upload: <T>(path: string, form: FormData, opts?: RequestOptions) =>
     request<T>(path, { ...opts, method: 'POST', body: form }),

@@ -1,16 +1,25 @@
+import { usePermission } from '@/features/auth';
+import { ReadOnly } from '@/components/ui/read-only';
 import { useMemo, useState, type ReactNode } from 'react';
 import { Pressable, StyleSheet } from 'react-native';
-import { createUserSchema, updateUserSchema, type User } from '@byke-os/shared';
+import {
+  createUserSchema,
+  SUPER_ADMIN_ROLE_CODE,
+  updateUserSchema,
+  type User,
+} from '@byke-os/shared';
 
 import { ThemedText } from '@/components/themed-text';
 import { Banner } from '@/components/ui/banner';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Screen } from '@/components/ui/screen';
+import { MultiSelectField } from '@/components/ui/multi-select-field';
 import { SectionLabel } from '@/components/ui/section-label';
 import { SelectField } from '@/components/ui/select-field';
 import { TextField } from '@/components/ui/text-field';
 import { Colors, FontFamily, Spacing } from '@/constants/theme';
+import { useHotelOptions } from '@/features/hotels';
 import { useRoleOptions } from '@/features/roles';
 import { apiErrorToForm, issuesToFieldErrors, type FieldErrors } from '@/lib/form-errors';
 import { usersApi } from '../api/users.api';
@@ -20,7 +29,7 @@ const CODE_FIELDS = { EMAIL_TAKEN: 'email' };
 /**
  * Add user (no `user`) or edit user, as a full screen with Save pinned at the bottom.
  * Passwords are set only when creating; existing users get a new one via "Reset password".
- * You can't change your own role. Status is changed with its own toggle (edit screen).
+ * You can't change your own role. Everyone except Super Admin works at one or more hotels (Plan 05). Status is changed with its own toggle (edit screen).
  * `children` = extra sections (edit screen actions).
  */
 export function UserForm({
@@ -37,10 +46,15 @@ export function UserForm({
   children?: ReactNode;
 }) {
   const editing = !!user;
-  const { roles, error: rolesError } = useRoleOptions({ activeOnly: true });
+  // Without the edit permission an existing record is shown read-only (Plan 06).
+  const canEdit = usePermission('edit-user');
+  const locked = editing && !canEdit;
+  const { roles, error: rolesError } = useRoleOptions();
   const [name, setName] = useState(user?.name ?? '');
   const [email, setEmail] = useState(user?.email ?? '');
+  const { hotels, error: hotelsError } = useHotelOptions();
   const [roleId, setRoleId] = useState<string | null>(user?.role?.id ?? null);
+  const [hotelIds, setHotelIds] = useState<string[]>(user?.hotels.map((h) => h.id) ?? []);
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [errors, setErrors] = useState<FieldErrors>({});
@@ -56,6 +70,24 @@ export function UserForm({
     return options;
   }, [roles, user]);
 
+  const hotelOptions = useMemo(
+    () =>
+      hotels.map((h) => ({
+        value: h.id,
+        label: h.isActive ? h.name : `${h.name} (inactive)`,
+        description: `${h.code} · ${h.location.name}`,
+      })),
+    [hotels],
+  );
+
+  const roleCode =
+    roles.find((r) => r.id === roleId)?.code ??
+    (roleId === user?.role?.id ? user?.role?.code : null);
+  const isSuperAdmin = roleCode === SUPER_ADMIN_ROLE_CODE;
+  const sameHotels = (a: string[], b: string[]) =>
+    a.length === b.length && a.every((id) => b.includes(id));
+  const hotelsMissing = !isSuperAdmin && hotelIds.length === 0;
+
   async function save() {
     setFormError(null);
     try {
@@ -64,7 +96,13 @@ export function UserForm({
           ...(name.trim() !== user.name && { name }),
           ...(email.trim().toLowerCase() !== user.email && { email }),
           ...(roleId && roleId !== user.role?.id && { roleId }),
+          ...(!isSuperAdmin &&
+            !sameHotels(
+              hotelIds,
+              user.hotels.map((h) => h.id),
+            ) && { hotelIds }),
         };
+        if (hotelsMissing) return setErrors({ hotelIds: 'Choose at least one hotel' });
         if (Object.keys(changes).length === 0) return onSaved();
         const parsed = updateUserSchema.safeParse(changes);
         if (!parsed.success) return setErrors(issuesToFieldErrors(parsed.error.issues));
@@ -72,10 +110,17 @@ export function UserForm({
         setSaving(true);
         await usersApi.update(user.id, parsed.data);
       } else {
-        const parsed = createUserSchema.safeParse({ name, email, roleId: roleId ?? '', password });
-        if (!parsed.success) {
-          const fieldErrors = issuesToFieldErrors(parsed.error.issues);
+        const parsed = createUserSchema.safeParse({
+          name,
+          email,
+          roleId: roleId ?? '',
+          hotelIds: isSuperAdmin ? [] : hotelIds,
+          password,
+        });
+        if (!parsed.success || hotelsMissing) {
+          const fieldErrors = parsed.success ? {} : issuesToFieldErrors(parsed.error.issues);
           if (!roleId) fieldErrors.roleId = 'Choose a role';
+          if (hotelsMissing) fieldErrors.hotelIds = 'Choose at least one hotel';
           return setErrors(fieldErrors);
         }
         setErrors({});
@@ -95,81 +140,107 @@ export function UserForm({
     <Screen
       header={header}
       footer={
-        <Button
-          title={editing ? 'Save changes' : 'Create user'}
-          icon={editing ? 'check' : 'personAdd'}
-          onPress={save}
-          loading={saving}
-        />
+        locked ? undefined : (
+          <Button
+            title={editing ? 'Save changes' : 'Create user'}
+            icon={editing ? 'check' : 'personAdd'}
+            onPress={save}
+            loading={saving}
+          />
+        )
       }
     >
       {formError ? <Banner message={formError} /> : null}
-      {rolesError ? <Banner message={`Couldn't load roles: ${rolesError}`} /> : null}
+      <ReadOnly locked={locked}>
+        {rolesError ? <Banner message={`Couldn't load roles: ${rolesError}`} /> : null}
+        {hotelsError ? <Banner message={`Couldn't load hotels: ${hotelsError}`} /> : null}
 
-      <SectionLabel title="Details" />
-      <Card>
-        <TextField
-          label="Full name"
-          value={name}
-          onChangeText={setName}
-          error={errors.name}
-          placeholder="e.g. Priya Nair"
-          autoCapitalize="words"
-          autoComplete="off"
-          editable={!saving}
-        />
-        <TextField
-          label="Email"
-          value={email}
-          onChangeText={setEmail}
-          error={errors.email}
-          placeholder="name@thebyke.com"
-          autoCapitalize="none"
-          autoComplete="off"
-          keyboardType="email-address"
-          editable={!saving}
-        />
-      </Card>
-
-      <SectionLabel title="Access" />
-      <Card>
-        <SelectField
-          label="Role"
-          value={roleId}
-          options={roleOptions}
-          onChange={setRoleId}
-          placeholder="Choose a role"
-          error={errors.roleId}
-          hint={isSelf ? "You can't change your own role." : undefined}
-          disabled={saving || isSelf}
-        />
-        {editing ? null : (
+        <SectionLabel title="Details" />
+        <Card>
           <TextField
-            label="Temporary password"
-            value={password}
-            onChangeText={setPassword}
-            error={errors.password}
-            hint="At least 8 characters with a letter and a number. Share it with the user."
-            placeholder="At least 8 characters"
-            secureTextEntry={!showPassword}
-            autoCapitalize="none"
-            autoComplete="new-password"
+            label="Full name"
+            value={name}
+            onChangeText={setName}
+            error={errors.name}
+            placeholder="e.g. Priya Nair"
+            autoCapitalize="words"
+            autoComplete="off"
             editable={!saving}
-            right={
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel={showPassword ? 'Hide password' : 'Show password'}
-                onPress={() => setShowPassword((v) => !v)}
-                hitSlop={8}
-                style={styles.toggle}
-              >
-                <ThemedText style={styles.toggleText}>{showPassword ? 'Hide' : 'Show'}</ThemedText>
-              </Pressable>
-            }
           />
-        )}
-      </Card>
+          <TextField
+            label="Email"
+            value={email}
+            onChangeText={setEmail}
+            error={errors.email}
+            placeholder="name@thebyke.com"
+            autoCapitalize="none"
+            autoComplete="off"
+            keyboardType="email-address"
+            editable={!saving}
+          />
+        </Card>
 
+        <SectionLabel title="Access" />
+        <Card>
+          <SelectField
+            label="Role"
+            value={roleId}
+            options={roleOptions}
+            onChange={setRoleId}
+            placeholder="Choose a role"
+            error={errors.roleId}
+            hint={isSelf ? "You can't change your own role." : undefined}
+            disabled={saving || isSelf}
+          />
+          {isSuperAdmin ? (
+            <ThemedText type="caption" themeColor="textSecondary" style={styles.note}>
+              Super Admin can see every hotel.
+            </ThemedText>
+          ) : (
+            <MultiSelectField
+              label="Hotels"
+              values={hotelIds}
+              options={hotelOptions}
+              onChange={(ids) => {
+                setHotelIds(ids);
+                if (ids.length) setErrors(({ hotelIds: _, ...rest }) => rest);
+              }}
+              placeholder="Choose hotels"
+              searchPlaceholder="Search hotels"
+              error={errors.hotelIds}
+              hint="The user sees only these hotels."
+              disabled={saving}
+            />
+          )}
+          {editing ? null : (
+            <TextField
+              label="Temporary password"
+              value={password}
+              onChangeText={setPassword}
+              error={errors.password}
+              hint="At least 8 characters with a letter and a number. Share it with the user."
+              placeholder="At least 8 characters"
+              secureTextEntry={!showPassword}
+              autoCapitalize="none"
+              autoComplete="new-password"
+              editable={!saving}
+              right={
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel={showPassword ? 'Hide password' : 'Show password'}
+                  onPress={() => setShowPassword((v) => !v)}
+                  hitSlop={8}
+                  style={styles.toggle}
+                >
+                  <ThemedText style={styles.toggleText}>
+                    {showPassword ? 'Hide' : 'Show'}
+                  </ThemedText>
+                </Pressable>
+              }
+            />
+          )}
+        </Card>
+      </ReadOnly>
       {children}
     </Screen>
   );
@@ -177,5 +248,6 @@ export function UserForm({
 
 const styles = StyleSheet.create({
   toggle: { paddingHorizontal: Spacing.two },
+  note: { marginLeft: 2 },
   toggleText: { fontFamily: FontFamily.semiBold, fontSize: 14, color: Colors.primaryPressed },
 });

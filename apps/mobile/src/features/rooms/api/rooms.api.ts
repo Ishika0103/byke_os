@@ -3,6 +3,8 @@ import type {
   CreateRoomInput,
   Paginated,
   Room,
+  RoomImportPreview,
+  RoomImportResult,
   UpdateRoomInput,
 } from '@byke-os/shared';
 import { apiClient } from '@/lib/api-client';
@@ -30,4 +32,15 @@ export const roomsApi = {
   update: (hotelId: string, id: string, input: UpdateRoomInput) =>
     apiClient.patch<Room>(`${base(hotelId)}/${id}`, input),
   remove: (hotelId: string, id: string) => apiClient.delete(`${base(hotelId)}/${id}`),
+
+  // Excel import / export (Plan 07)
+  sampleFile: (hotelId: string, roomTypeId?: string) =>
+    apiClient.file(`${base(hotelId)}/import/sample${toQueryString({ roomTypeId })}`),
+  exportFile: (hotelId: string) => apiClient.file(`${base(hotelId)}/export`),
+  previewImport: (hotelId: string, form: FormData) =>
+    apiClient.upload<RoomImportPreview>(`${base(hotelId)}/import/preview`, form),
+  commitImport: (hotelId: string, form: FormData) =>
+    apiClient.upload<RoomImportResult>(`${base(hotelId)}/import/commit`, form),
+  rejectedFile: (hotelId: string, form: FormData) =>
+    apiClient.uploadForFile(`${base(hotelId)}/import/rejected`, form),
 };

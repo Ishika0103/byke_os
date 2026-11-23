@@ -3,6 +3,7 @@ import { useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { Can } from '@/features/auth';
 import { Chip } from '@/components/ui/chip';
 import { GroupedList } from '@/components/ui/grouped-list';
 import { OptionDialog } from '@/components/ui/option-dialog';
@@ -35,16 +36,27 @@ export default function RoomsScreen() {
         subtitle={hotel?.name ?? ' '}
         right={
           <View style={styles.actions}>
-            <HeaderButton
-              icon="addMany"
-              label="Add many rooms"
-              onPress={() => router.push({ pathname: '/hotels/[id]/rooms/bulk', params: { id } })}
-            />
-            <HeaderButton
-              icon="add"
-              label="Add room"
-              onPress={() => router.push({ pathname: '/hotels/[id]/rooms/new', params: { id } })}
-            />
+            <Can permission="add-room">
+              <HeaderButton
+                icon="upload"
+                label="Import rooms from Excel"
+                onPress={() =>
+                  router.push({ pathname: '/hotels/[id]/rooms/import', params: { id } })
+                }
+              />
+            </Can>
+            <Can permission="add-room">
+              <HeaderButton
+                icon="addMany"
+                label="Add many rooms"
+                onPress={() => router.push({ pathname: '/hotels/[id]/rooms/bulk', params: { id } })}
+              />
+              <HeaderButton
+                icon="add"
+                label="Add room"
+                onPress={() => router.push({ pathname: '/hotels/[id]/rooms/new', params: { id } })}
+              />
+            </Can>
           </View>
         }
       >

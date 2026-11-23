@@ -7,13 +7,19 @@ import {
   objectIdSchema,
   passwordSchema,
 } from './common';
+import type { HotelSummary } from './hotel';
 import type { RoleSummary } from './role';
+
+/** Hotels a user works at (Plan 05). Required unless the role is Super Admin; checked by the API. */
+export const MAX_USER_HOTELS = 100;
+const hotelIdsSchema = z.array(objectIdSchema).max(MAX_USER_HOTELS);
 
 export const createUserSchema = z
   .object({
     name: nameSchema(2, 80),
     email: emailSchema,
     roleId: objectIdSchema,
+    hotelIds: hotelIdsSchema.default([]),
     password: passwordSchema,
   })
   .strict()
@@ -28,6 +34,7 @@ export const updateUserSchema = z
     name: nameSchema(2, 80),
     email: emailSchema,
     roleId: objectIdSchema,
+    hotelIds: hotelIdsSchema,
     isActive: z.boolean(),
   })
   .partial()
@@ -39,6 +46,7 @@ export const resetPasswordSchema = z.object({ newPassword: passwordSchema }).str
 export const userListQuerySchema = listQuerySchema
   .extend({
     roleId: objectIdSchema.optional(),
+    hotelId: objectIdSchema.optional(),
     sort: z.enum(['name', '-name', 'email', '-email', 'createdAt', '-createdAt']).default('name'),
   })
   .strict();
@@ -53,4 +61,8 @@ export type User = BaseEntity & {
   email: string;
   /** null if the role was deleted after assignment. */
   role: RoleSummary | null;
+  /** Hotels the user is mapped to (empty for Super Admin, who sees every hotel). */
+  hotels: HotelSummary[];
+  /** The user's role permissions (Plan 06), for hiding buttons in the app. */
+  permissions: string[];
 };
