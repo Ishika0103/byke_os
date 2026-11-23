@@ -25,6 +25,7 @@ export function useTestDatabase() {
     await db.collection('rooms').deleteMany({});
     await db.collection('tasks').deleteMany({});
     await db.collection('taskUpdates').deleteMany({});
+    await db.collection('notifications').deleteMany({});
     await seedSystemRoles({ name: 'seed-system-roles', context: { db } });
     // Apply later migrations that reshape the seeded roles, as on a real database.
     await removeDeletedAt({ name: 'remove-deleted-at', context: { db } });
@@ -49,6 +50,13 @@ export async function locationId(name = 'Matheran'): Promise<string> {
   const l = await getDb().collection('locations').findOne({ name });
   if (!l) throw new Error(`Location ${name} not found`);
   return String(l._id);
+}
+
+/** Id of a seeded department (HK, FO, MT, FB; the migration inserts them). */
+export async function departmentId(code = 'HK'): Promise<string> {
+  const d = await getDb().collection('departments').findOne({ code });
+  if (!d) throw new Error(`Department ${code} not found`);
+  return String(d._id);
 }
 
 /** Inserts a hotel directly (bypassing the API); returns its id. */

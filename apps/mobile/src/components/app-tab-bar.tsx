@@ -1,18 +1,14 @@
 import type { BottomTabBarProps } from 'expo-router/tabs';
 import * as Haptics from 'expo-haptics';
 import { router } from 'expo-router';
-import { useState } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 import Animated, { useAnimatedStyle, withTiming } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { ThemedText } from '@/components/themed-text';
-import { BottomSheet } from '@/components/ui/bottom-sheet';
-import { CardList } from '@/components/ui/card';
 import { Icon, type IconName } from '@/components/ui/icon';
-import { ListRow } from '@/components/ui/list-row';
 import { Colors, FontFamily, Layout, Shadow } from '@/constants/theme';
-import { useAnyPermission, useIsSuperAdmin, usePermission } from '@/features/auth';
+import { usePermission } from '@/features/auth';
 import type { Permission } from '@byke-os/shared';
 
 type Tab = { route: string; label: string; icon: IconName; permission?: Permission };
@@ -38,19 +34,14 @@ function tap() {
 
 /**
  * Footer: Home · Users · [+] · Tasks · Settings. The round + floats half above the bar and
- * opens "Quick add".
+ * opens Add task (the only quick add now).
  */
 export function AppTabBar({ state, navigateToTab }: BottomTabBarProps) {
   const insets = useSafeAreaInsets();
-  const [quickAddOpen, setQuickAddOpen] = useState(false);
   const current = state.routes[state.index]?.name;
   const canUsers = usePermission('view-user');
   const canTasks = usePermission('view-task');
   const canAddTask = usePermission('add-task');
-  const canAddUser = usePermission('add-user');
-  const canAddHotel = usePermission('add-hotel');
-  const isSuperAdmin = useIsSuperAdmin();
-  const canQuickAdd = useAnyPermission('add-task', 'add-user', 'add-hotel') || isSuperAdmin;
   const allowed = (tab: Tab) =>
     tab.route === 'users' ? canUsers : tab.route === 'tasks' ? canTasks : true;
 
@@ -67,11 +58,6 @@ export function AppTabBar({ state, navigateToTab }: BottomTabBarProps) {
     />
   );
 
-  function quickAdd(path: '/users/new' | '/roles/new' | '/hotels/new' | '/tasks/new') {
-    setQuickAddOpen(false);
-    router.push(path);
-  }
-
   return (
     <>
       <View style={[styles.bar, { height: Layout.tabBarHeight + insets.bottom }]}>
@@ -80,7 +66,7 @@ export function AppTabBar({ state, navigateToTab }: BottomTabBarProps) {
         {RIGHT.filter(allowed).map(renderTab)}
       </View>
 
-      {canQuickAdd ? (
+      {canAddTask ? (
         <View
           style={[
             styles.fabWrap,
@@ -89,10 +75,10 @@ export function AppTabBar({ state, navigateToTab }: BottomTabBarProps) {
         >
           <Pressable
             accessibilityRole="button"
-            accessibilityLabel="Quick add"
+            accessibilityLabel="Add task"
             onPress={() => {
               Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
-              setQuickAddOpen(true);
+              router.push('/tasks/new');
             }}
             style={({ pressed }) => [styles.fab, pressed && { transform: [{ scale: 0.94 }] }]}
           >
@@ -100,43 +86,6 @@ export function AppTabBar({ state, navigateToTab }: BottomTabBarProps) {
           </Pressable>
         </View>
       ) : null}
-
-      <BottomSheet visible={quickAddOpen} title="Quick add" onClose={() => setQuickAddOpen(false)}>
-        <CardList>
-          {canAddTask ? (
-            <ListRow
-              icon="tasks"
-              title="Add task"
-              subtitle="Work with an owner, a deadline and proof"
-              onPress={() => quickAdd('/tasks/new')}
-            />
-          ) : null}
-          {canAddUser ? (
-            <ListRow
-              icon="personAdd"
-              title="Add user"
-              subtitle="Give someone access to Byke OS"
-              onPress={() => quickAdd('/users/new')}
-            />
-          ) : null}
-          {isSuperAdmin ? (
-            <ListRow
-              icon="roles"
-              title="Add role"
-              subtitle="A new job role, e.g. Front Office"
-              onPress={() => quickAdd('/roles/new')}
-            />
-          ) : null}
-          {canAddHotel ? (
-            <ListRow
-              icon="hotel"
-              title="Add hotel"
-              subtitle="A Byke property, with location and timings"
-              onPress={() => quickAdd('/hotels/new')}
-            />
-          ) : null}
-        </CardList>
-      </BottomSheet>
     </>
   );
 }

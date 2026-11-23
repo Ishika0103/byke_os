@@ -35,6 +35,7 @@ const envSchema = z
     // Only used by `npm run seed`
     SEED_ADMIN_NAME: z.string().optional(),
     SEED_ADMIN_EMAIL: z.string().optional(),
+    SEED_ADMIN_MOBILE: z.string().optional(),
     SEED_ADMIN_PASSWORD: z.string().optional(),
   })
   .refine((e) => e.JWT_ACCESS_SECRET !== e.JWT_REFRESH_SECRET, {

@@ -8,5 +8,7 @@ export * from './schemas/location';
 export * from './schemas/hotel';
 export * from './schemas/room-type';
 export * from './schemas/room';
-export * from './data/departments';
 export * from './schemas/task';
+export * from './schemas/notification';
+export * from './schemas/task-master';
+export * from './schemas/department';

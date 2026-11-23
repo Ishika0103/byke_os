@@ -16,6 +16,9 @@ export default function AppLayout() {
         <Stack.Screen name="roles/index" />
         <Stack.Screen name="roles/new" />
         <Stack.Screen name="roles/[id]" />
+        <Stack.Screen name="departments/index" />
+        <Stack.Screen name="departments/new" />
+        <Stack.Screen name="departments/[id]" />
         <Stack.Screen name="hotels/index" />
         <Stack.Screen name="hotels/new" />
         <Stack.Screen name="hotels/[id]/index" />
@@ -29,6 +32,7 @@ export default function AppLayout() {
         <Stack.Screen name="tasks/new" />
         <Stack.Screen name="tasks/[id]/index" />
         <Stack.Screen name="tasks/[id]/edit" />
+        <Stack.Screen name="notifications" />
         <Stack.Screen name="change-password" />
       </Stack>
     </HotelProvider>

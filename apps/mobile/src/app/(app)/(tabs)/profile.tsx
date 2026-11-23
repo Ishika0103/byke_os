@@ -22,6 +22,7 @@ export default function ProfileScreen() {
   const [confirmOpen, setConfirmOpen] = useState(false);
   const canHotels = usePermission('view-hotel');
   const canUsers = usePermission('view-user');
+  const canDepartments = usePermission('view-department');
   const isSuperAdmin = useIsSuperAdmin();
   if (!user) return null;
 
@@ -76,8 +77,10 @@ export default function ProfileScreen() {
         />
       </CardList>
 
-      {canHotels || canUsers || isSuperAdmin ? <SectionLabel title="Administration" /> : null}
-      {canHotels || canUsers || isSuperAdmin ? (
+      {canHotels || canUsers || canDepartments || isSuperAdmin ? (
+        <SectionLabel title="Administration" />
+      ) : null}
+      {canHotels || canUsers || canDepartments || isSuperAdmin ? (
         <CardList>
           {canHotels ? (
             <ListRow
@@ -93,6 +96,14 @@ export default function ProfileScreen() {
               title="Users"
               subtitle="Add people and give them a role"
               onPress={() => router.navigate('/users')}
+            />
+          ) : null}
+          {canDepartments ? (
+            <ListRow
+              icon="users"
+              title="Departments"
+              subtitle="Housekeeping, Front Office and other teams"
+              onPress={() => router.push('/departments')}
             />
           ) : null}
           {isSuperAdmin ? (

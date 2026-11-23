@@ -5,6 +5,7 @@ import { UserModel } from '../src/modules/users/user.model';
 import {
   createHotel,
   createUser,
+  departmentId,
   grant,
   login,
   roleId,
@@ -19,8 +20,10 @@ const app = createApp();
 const newUser = async (overrides: Record<string, unknown> = {}) => ({
   name: 'Priya Nair',
   email: 'priya@test.local',
+  mobile: '98765 43210',
   roleId: await roleId('HOD'),
   hotelIds: [await createHotel()],
+  departmentIds: [await departmentId()],
   password: 'Welcome123',
   ...overrides,
 });
@@ -211,5 +214,27 @@ describe('users CRUD', () => {
     const admin = await signedInAs(app);
     expect((await admin.get('/api/v1/users/0123456789abcdef01234567')).status).toBe(404);
     expect((await admin.get('/api/v1/users/123')).status).toBe(400);
+  });
+
+  it('needs a valid 10-digit mobile number; +91 and spaces are removed; it can be changed and searched', async () => {
+    const admin = await signedInAs(app);
+    const without = await newUser();
+    delete (without as Record<string, unknown>).mobile;
+    expect((await admin.post('/api/v1/users', without)).status).toBe(400);
+    for (const bad of ['12345', '5876543210', '98765abcde', '98765432100']) {
+      const res = await admin.post('/api/v1/users', await newUser({ mobile: bad }));
+      expect(res.status).toBe(400);
+      expect(res.body.error.details.mobile).toBeDefined();
+    }
+
+    const ok = await admin.post('/api/v1/users', await newUser({ mobile: '+91 98765-43210' }));
+    expect(ok.status).toBe(201);
+    expect(ok.body.data.mobile).toBe('9876543210');
+
+    const changed = await admin.patch(`/api/v1/users/${ok.body.data.id}`, {
+      mobile: '09123456780',
+    });
+    expect(changed.body.data.mobile).toBe('9123456780');
+    expect((await admin.get('/api/v1/users?q=9123456')).body.data.total).toBe(1);
   });
 });

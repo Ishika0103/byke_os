@@ -19,6 +19,7 @@ import { SectionLabel } from '@/components/ui/section-label';
 import { SelectField } from '@/components/ui/select-field';
 import { TextField } from '@/components/ui/text-field';
 import { Colors, FontFamily, Spacing } from '@/constants/theme';
+import { useDepartmentOptions } from '@/features/departments';
 import { useHotelOptions } from '@/features/hotels';
 import { useRoleOptions } from '@/features/roles';
 import { apiErrorToForm, issuesToFieldErrors, type FieldErrors } from '@/lib/form-errors';
@@ -52,9 +53,14 @@ export function UserForm({
   const { roles, error: rolesError } = useRoleOptions();
   const [name, setName] = useState(user?.name ?? '');
   const [email, setEmail] = useState(user?.email ?? '');
+  const [mobile, setMobile] = useState(user?.mobile ?? '');
   const { hotels, error: hotelsError } = useHotelOptions();
+  const { departments, error: departmentsError } = useDepartmentOptions();
   const [roleId, setRoleId] = useState<string | null>(user?.role?.id ?? null);
   const [hotelIds, setHotelIds] = useState<string[]>(user?.hotels.map((h) => h.id) ?? []);
+  const [departmentIds, setDepartmentIds] = useState<string[]>(
+    user?.departments.map((d) => d.id) ?? [],
+  );
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [errors, setErrors] = useState<FieldErrors>({});
@@ -80,6 +86,21 @@ export function UserForm({
     [hotels],
   );
 
+  const departmentOptions = useMemo(() => {
+    const options = departments.map((d) => ({
+      value: d.id,
+      label: d.isActive ? d.name : `${d.name} (inactive)`,
+      description: d.code,
+    }));
+    // Keep the user's current departments visible even if they are not in the list.
+    for (const d of user?.departments ?? []) {
+      if (!options.some((o) => o.value === d.id)) {
+        options.push({ value: d.id, label: d.name, description: d.code });
+      }
+    }
+    return options;
+  }, [departments, user]);
+
   const roleCode =
     roles.find((r) => r.id === roleId)?.code ??
     (roleId === user?.role?.id ? user?.role?.code : null);
@@ -95,14 +116,23 @@ export function UserForm({
         const changes = {
           ...(name.trim() !== user.name && { name }),
           ...(email.trim().toLowerCase() !== user.email && { email }),
+          // Older users have no number yet; an empty box just leaves it as it is.
+          ...(mobile.trim() && mobile.trim() !== (user.mobile ?? '') && { mobile }),
           ...(roleId && roleId !== user.role?.id && { roleId }),
           ...(!isSuperAdmin &&
             !sameHotels(
               hotelIds,
               user.hotels.map((h) => h.id),
             ) && { hotelIds }),
+          ...(!sameHotels(
+            departmentIds,
+            user.departments.map((d) => d.id),
+          ) && { departmentIds }),
         };
         if (hotelsMissing) return setErrors({ hotelIds: 'Choose at least one hotel' });
+        if (departmentIds.length === 0) {
+          return setErrors({ departmentIds: 'Choose at least one department' });
+        }
         if (Object.keys(changes).length === 0) return onSaved();
         const parsed = updateUserSchema.safeParse(changes);
         if (!parsed.success) return setErrors(issuesToFieldErrors(parsed.error.issues));
@@ -113,14 +143,19 @@ export function UserForm({
         const parsed = createUserSchema.safeParse({
           name,
           email,
+          mobile,
           roleId: roleId ?? '',
           hotelIds: isSuperAdmin ? [] : hotelIds,
+          departmentIds,
           password,
         });
-        if (!parsed.success || hotelsMissing) {
+        if (!parsed.success || hotelsMissing || departmentIds.length === 0) {
           const fieldErrors = parsed.success ? {} : issuesToFieldErrors(parsed.error.issues);
           if (!roleId) fieldErrors.roleId = 'Choose a role';
           if (hotelsMissing) fieldErrors.hotelIds = 'Choose at least one hotel';
+          if (departmentIds.length === 0) {
+            fieldErrors.departmentIds = 'Choose at least one department';
+          }
           return setErrors(fieldErrors);
         }
         setErrors({});
@@ -154,6 +189,9 @@ export function UserForm({
       <ReadOnly locked={locked}>
         {rolesError ? <Banner message={`Couldn't load roles: ${rolesError}`} /> : null}
         {hotelsError ? <Banner message={`Couldn't load hotels: ${hotelsError}`} /> : null}
+        {departmentsError ? (
+          <Banner message={`Couldn't load departments: ${departmentsError}`} />
+        ) : null}
 
         <SectionLabel title="Details" />
         <Card>
@@ -176,6 +214,17 @@ export function UserForm({
             autoCapitalize="none"
             autoComplete="off"
             keyboardType="email-address"
+            editable={!saving}
+          />
+          <TextField
+            label="Mobile number"
+            value={mobile}
+            onChangeText={setMobile}
+            error={errors.mobile}
+            placeholder="10-digit number"
+            keyboardType="phone-pad"
+            autoComplete="off"
+            maxLength={16}
             editable={!saving}
           />
         </Card>
@@ -212,6 +261,20 @@ export function UserForm({
               disabled={saving}
             />
           )}
+          <MultiSelectField
+            label="Departments"
+            values={departmentIds}
+            options={departmentOptions}
+            onChange={(ids) => {
+              setDepartmentIds(ids);
+              if (ids.length) setErrors(({ departmentIds: _, ...rest }) => rest);
+            }}
+            placeholder="Choose departments"
+            searchPlaceholder="Search departments"
+            error={errors.departmentIds}
+            hint="The teams this person works in. At least one."
+            disabled={saving}
+          />
           {editing ? null : (
             <TextField
               label="Temporary password"

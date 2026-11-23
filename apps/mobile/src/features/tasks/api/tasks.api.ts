@@ -1,9 +1,11 @@
 import { Platform } from 'react-native';
 import type {
+  CreatedTasks,
   CreateTaskInput,
-  DepartmentKey,
+  Department,
   Paginated,
   Task,
+  TaskMaster,
   TaskActionInput,
   TaskDetail,
   TaskSummary,
@@ -18,7 +20,7 @@ export type TaskListParams = {
   limit?: number;
   q?: string;
   view?: TaskView;
-  department?: DepartmentKey;
+  departmentId?: string;
   assigneeId?: string;
   roomId?: string;
   overdue?: boolean;
@@ -36,11 +38,16 @@ export const tasksApi = {
   summary: (hotelId: string) => apiClient.get<TaskSummary>(`${base(hotelId)}/summary`),
   get: (hotelId: string, id: string) => apiClient.get<TaskDetail>(`${base(hotelId)}/${id}`),
   create: (hotelId: string, input: CreateTaskInput) =>
-    apiClient.post<TaskDetail>(base(hotelId), input),
+    apiClient.post<CreatedTasks>(base(hotelId), input),
   update: (hotelId: string, id: string, input: UpdateTaskInput) =>
     apiClient.patch<TaskDetail>(`${base(hotelId)}/${id}`, input),
   act: (hotelId: string, id: string, input: TaskActionInput) =>
     apiClient.post<TaskDetail>(`${base(hotelId)}/${id}/actions`, input),
+
+  /** The predefined task titles (seeded, read-only). */
+  masters: () => apiClient.get<TaskMaster[]>('/task-masters'),
+  /** Active departments for the pickers. */
+  departments: () => apiClient.get<Paginated<Department>>('/departments?limit=100&isActive=true'),
 
   /** Uploads one photo and returns its URL path, to send with the "done" step. */
   async uploadPhoto(hotelId: string, photo: PickedPhoto): Promise<string> {

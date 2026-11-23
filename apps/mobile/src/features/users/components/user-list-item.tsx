@@ -21,7 +21,9 @@ export function UserListItem({
       subtitle={[
         user.role?.name ?? 'No role',
         user.email,
+        user.mobile,
         user.hotels.map((h) => h.code).join(', '),
+        user.departments.map((d) => d.name).join(', '),
       ]
         .filter(Boolean)
         .join(' · ')}

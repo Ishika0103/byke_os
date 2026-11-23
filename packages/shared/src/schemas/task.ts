@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { DEPARTMENT_KEYS, type DepartmentKey } from '../data/departments';
+import type { DepartmentSummary } from './department';
 import { type BaseEntity, listQuerySchema, nameSchema, objectIdSchema } from './common';
 
 /** Plan 04 §3. */
@@ -58,6 +58,7 @@ export const TASK_UPDATE_KINDS = [
 export type TaskUpdateKind = (typeof TASK_UPDATE_KINDS)[number];
 
 export const MAX_TASK_PHOTOS = 3;
+export const MAX_TASK_ROOMS = 100;
 
 /** A photo returned by the upload endpoint: "/uploads/<random>.jpg". */
 export const uploadUrlSchema = z
@@ -72,9 +73,15 @@ export const createTaskSchema = z
   .object({
     title: nameSchema(3, 120),
     description: descriptionSchema.nullable().optional(),
-    department: z.enum(DEPARTMENT_KEYS, { message: 'Choose a department' }),
-    roomId: objectIdSchema.nullable().optional(),
-    assigneeId: objectIdSchema.nullable().optional(),
+    /** The predefined title this task was picked from; null/absent for "Other" (typed title). */
+    taskMasterId: objectIdSchema.nullable().optional(),
+    departmentId: z.string({ error: 'Choose a department' }).pipe(objectIdSchema),
+    /** One task is created per room; none = a single task without a room. */
+    roomIds: z
+      .array(objectIdSchema)
+      .max(MAX_TASK_ROOMS, `At most ${MAX_TASK_ROOMS} rooms`)
+      .optional(),
+    assigneeIds: z.array(objectIdSchema).max(20, 'At most 20 people').optional(),
     dueAt: dueAtSchema,
   })
   .strict();
@@ -83,9 +90,9 @@ export const updateTaskSchema = z
   .object({
     title: nameSchema(3, 120),
     description: descriptionSchema.nullable(),
-    department: z.enum(DEPARTMENT_KEYS, { message: 'Choose a department' }),
+    departmentId: objectIdSchema,
     roomId: objectIdSchema.nullable(),
-    assigneeId: objectIdSchema.nullable(),
+    assigneeIds: z.array(objectIdSchema).max(20, 'At most 20 people'),
     dueAt: dueAtSchema,
   })
   .partial()
@@ -129,7 +136,7 @@ export type TaskView = (typeof TASK_VIEWS)[number];
 export const taskListQuerySchema = listQuerySchema
   .extend({
     view: z.enum(TASK_VIEWS).default('open'),
-    department: z.enum(DEPARTMENT_KEYS).optional(),
+    departmentId: objectIdSchema.optional(),
     /** A user id, or "me" for the signed-in user. */
     assigneeId: z.union([objectIdSchema, z.literal('me')]).optional(),
     roomId: objectIdSchema.optional(),
@@ -148,9 +155,14 @@ export type Task = BaseEntity & {
   hotelId: string;
   title: string;
   description: string | null;
-  department: DepartmentKey;
+  /** The predefined title it came from; null when typed ("Other"). */
+  taskMasterId: string | null;
+  /** Tasks created together for several rooms share a group id. */
+  groupId: string;
+  department: DepartmentSummary | null;
   room: { id: string; roomNumber: string } | null;
-  assignee: PersonSummary | null;
+  /** Anyone listed can start, block and mark it done. Empty = unassigned. */
+  assignees: PersonSummary[];
   dueAt: string;
   stage: TaskStage;
   /** Set only while blocked. */
@@ -176,6 +188,9 @@ export type TaskUpdate = {
   by: PersonSummary | null;
   createdAt: string;
 };
+
+/** Response of creating tasks: one task per room (or one without a room), in one group. */
+export type CreatedTasks = { groupId: string; tasks: Task[] };
 
 export type TaskDetail = Task & { updates: TaskUpdate[] };
 

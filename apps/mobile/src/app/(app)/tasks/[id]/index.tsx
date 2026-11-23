@@ -1,4 +1,4 @@
-import { departmentLabel, OPEN_STAGES } from '@byke-os/shared';
+import { OPEN_STAGES } from '@byke-os/shared';
 import { router, useLocalSearchParams } from 'expo-router';
 import { StyleSheet, View } from 'react-native';
 
@@ -62,7 +62,7 @@ export default function TaskScreen() {
         <PageHeader
           back
           title={task.title}
-          subtitle={departmentLabel(task.department)}
+          subtitle={task.department?.name ?? ''}
           right={
             open ? (
               <Can permission="edit-task">
@@ -105,10 +105,15 @@ export default function TaskScreen() {
 
       <SectionLabel title="Details" />
       <Card>
-        <Detail label="Assigned to" value={task.assignee?.name ?? 'Unassigned'} />
+        <Detail
+          label="Assigned to"
+          value={
+            task.assignees.length ? task.assignees.map((a) => a.name).join(', ') : 'Unassigned'
+          }
+        />
         <Detail label="Due" value={dateTime(task.dueAt)} />
         <Detail label="Room" value={task.room ? `Room ${task.room.roomNumber}` : 'None'} />
-        <Detail label="Department" value={departmentLabel(task.department)} />
+        <Detail label="Department" value={task.department?.name ?? 'None'} />
         {task.description ? <Detail label="Details" value={task.description} /> : null}
         {task.doneBy ? (
           <Detail label="Done by" value={`${task.doneBy.name}, ${dateTime(task.doneAt!)}`} />

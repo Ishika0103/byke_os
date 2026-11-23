@@ -1,19 +1,19 @@
 import { usePermission } from '@/features/auth';
 import { ReadOnly } from '@/components/ui/read-only';
-import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import { useMemo, useState, type ReactNode } from 'react';
 import { StyleSheet, View } from 'react-native';
 import {
-  DEPARTMENTS,
   createTaskSchema,
-  SUPER_ADMIN_ROLE_CODE,
   updateTaskSchema,
-  type DepartmentKey,
+  type Task,
   type TaskDetail,
+  type TaskMaster,
 } from '@byke-os/shared';
 
 import { Banner } from '@/components/ui/banner';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
+import { MultiSelectField } from '@/components/ui/multi-select-field';
 import type { Option } from '@/components/ui/option-dialog';
 import { Screen } from '@/components/ui/screen';
 import { SectionLabel } from '@/components/ui/section-label';
@@ -21,14 +21,13 @@ import { SelectField } from '@/components/ui/select-field';
 import { TextField } from '@/components/ui/text-field';
 import { Spacing } from '@/constants/theme';
 import { TIME_OPTIONS } from '@/features/hotels';
-import { roomsApi } from '@/features/rooms';
-import { usersApi } from '@/features/users';
 import { apiErrorToForm, issuesToFieldErrors, type FieldErrors } from '@/lib/form-errors';
 import { tasksApi } from '../api/tasks.api';
+import { useTaskChoices } from '../hooks/use-task-choices';
 import { clock, dayKey, dayLabel } from '../utils/format';
 
 const NONE = 'none';
-const DEPARTMENT_OPTIONS: Option[] = DEPARTMENTS.map((d) => ({ value: d.key, label: d.label }));
+const OTHER = 'other';
 
 /** Default due time: an hour from now, rounded up to the next half hour. */
 function defaultDue(): Date {
@@ -53,45 +52,10 @@ function dayOptions(current: Date): Option[] {
   return days.map((d) => ({ value: dayKey(d), label: dayLabel(d) }));
 }
 
-/** Room and assignee choices for the drawers ("No room" / "Unassigned" first). */
-function useChoices(hotelId: string) {
-  const [rooms, setRooms] = useState<Option[]>([]);
-  const [people, setPeople] = useState<Option[]>([]);
-  useEffect(() => {
-    let cancelled = false;
-    roomsApi
-      .list(hotelId, { limit: 300, isActive: true })
-      .then((p) => {
-        if (cancelled) return;
-        setRooms(
-          p.items.map((r) => ({
-            value: r.id,
-            label: `Room ${r.roomNumber}`,
-            description: r.roomType?.name,
-          })),
-        );
-      })
-      .catch(() => {});
-    usersApi
-      .list({ limit: 100, isActive: true })
-      .then((p) => {
-        if (cancelled) return;
-        // Only people at this hotel, plus Super Admins (they work everywhere). Plan 05.
-        const here = p.items.filter(
-          (u) => u.role?.code === SUPER_ADMIN_ROLE_CODE || u.hotels.some((h) => h.id === hotelId),
-        );
-        setPeople(here.map((u) => ({ value: u.id, label: u.name, description: u.email })));
-      })
-      .catch(() => {});
-    return () => {
-      cancelled = true;
-    };
-  }, [hotelId]);
-  return { rooms, people };
-}
-
 /**
- * Add task (no `task`) or edit an open task. Only the title, department and due time are required.
+ * Add task (no `task`) or edit an open task.
+ * Add: Title (a predefined one or Other) -> Department -> Rooms (one task per room) -> Details ->
+ * Who and when. Edit changes one task (a single room).
  */
 export function TaskForm({
   hotelId,
@@ -102,19 +66,22 @@ export function TaskForm({
   hotelId: string;
   task?: TaskDetail;
   header: ReactNode;
-  onSaved: (task: TaskDetail) => void;
+  /** The tasks that were saved: several when rooms were chosen on a new task. */
+  onSaved: (tasks: Task[]) => void;
 }) {
   const editing = !!task;
   // Without the edit permission an existing record is shown read-only (Plan 06).
   const canEdit = usePermission('edit-task');
   const locked = editing && !canEdit;
   const initialDue = useMemo(() => (task ? new Date(task.dueAt) : defaultDue()), [task]);
-  const choices = useChoices(hotelId);
+  const choices = useTaskChoices(hotelId);
 
+  const [masterId, setMasterId] = useState<string | null>(null);
   const [title, setTitle] = useState(task?.title ?? '');
-  const [department, setDepartment] = useState<DepartmentKey | null>(task?.department ?? null);
+  const [departmentId, setDepartmentId] = useState<string | null>(task?.department?.id ?? null);
+  const [roomIds, setRoomIds] = useState<string[]>([]);
   const [roomId, setRoomId] = useState(task?.room?.id ?? NONE);
-  const [assigneeId, setAssigneeId] = useState(task?.assignee?.id ?? NONE);
+  const [assigneeIds, setAssigneeIds] = useState<string[]>(task?.assignees.map((a) => a.id) ?? []);
   const [day, setDay] = useState(dayKey(initialDue));
   const [time, setTime] = useState(timeKey(initialDue));
   const [description, setDescription] = useState(task?.description ?? '');
@@ -132,53 +99,79 @@ export function TaskForm({
           ),
     [initialDue],
   );
-  // Keep the current room / person choosable even if they're now inactive.
+
+  const titleOptions: Option[] = [
+    ...choices.masters.map((m) => ({ value: m.id, label: m.title })),
+    { value: OTHER, label: 'Other' },
+  ];
+  // Keep the current department / room / people choosable even if they're now inactive.
+  const departmentOptions = withCurrent(
+    choices.departments,
+    task?.department ? { value: task.department.id, label: task.department.name } : null,
+  );
   const roomOptions = withCurrent(
     [{ value: NONE, label: 'No room' }, ...choices.rooms],
     task?.room ? { value: task.room.id, label: `Room ${task.room.roomNumber}` } : null,
   );
-  const peopleOptions = withCurrent(
-    [{ value: NONE, label: 'Unassigned' }, ...choices.people],
-    task?.assignee ? { value: task.assignee.id, label: task.assignee.name } : null,
+  const peopleOptions = (task?.assignees ?? []).reduce(
+    (list, a) => withCurrent(list, { value: a.id, label: a.name }),
+    choices.people,
   );
+
+  function pickTitle(value: string) {
+    setMasterId(value);
+    setErrors((e) => ({ ...e, title: undefined }));
+    const master: TaskMaster | undefined = choices.masters.find((m) => m.id === value);
+    if (master) {
+      setTitle(master.title);
+      // Pre-fill the department from the master; it can still be changed.
+      if (master.department) setDepartmentId(master.department.id);
+    } else {
+      setTitle('');
+    }
+  }
 
   async function save() {
     setFormError(null);
-    const values = {
-      title,
-      department: department ?? undefined,
-      roomId: roomId === NONE ? null : roomId,
-      assigneeId: assigneeId === NONE ? null : assigneeId,
-      dueAt: new Date(`${day}T${time}:00`).toISOString(),
-      description: description.trim() || null,
-    };
+    const dueAt = new Date(`${day}T${time}:00`).toISOString();
+    const desc = description.trim() || null;
     try {
-      let saved: TaskDetail;
+      let saved: Task[];
       if (task) {
+        const sameAssignees =
+          assigneeIds.length === task.assignees.length &&
+          assigneeIds.every((id) => task.assignees.some((a) => a.id === id));
+        const newRoom = roomId === NONE ? null : roomId;
         const changes = {
           ...(title.trim() !== task.title && { title }),
-          ...(department !== task.department && { department: values.department }),
-          ...(values.roomId !== (task.room?.id ?? null) && { roomId: values.roomId }),
-          ...(values.assigneeId !== (task.assignee?.id ?? null) && {
-            assigneeId: values.assigneeId,
-          }),
-          ...(new Date(values.dueAt).getTime() !== new Date(task.dueAt).getTime() && {
-            dueAt: values.dueAt,
-          }),
-          ...(values.description !== task.description && { description: values.description }),
+          ...(departmentId !== task.department?.id && { departmentId: departmentId ?? undefined }),
+          ...(newRoom !== (task.room?.id ?? null) && { roomId: newRoom }),
+          ...(!sameAssignees && { assigneeIds }),
+          ...(new Date(dueAt).getTime() !== new Date(task.dueAt).getTime() && { dueAt }),
+          ...(desc !== task.description && { description: desc }),
         };
-        if (Object.keys(changes).length === 0) return onSaved(task);
+        if (Object.keys(changes).length === 0) return onSaved([task]);
         const parsed = updateTaskSchema.safeParse(changes);
         if (!parsed.success) return setErrors(issuesToFieldErrors(parsed.error.issues));
         setErrors({});
         setSaving(true);
-        saved = await tasksApi.update(hotelId, task.id, parsed.data);
+        saved = [await tasksApi.update(hotelId, task.id, parsed.data)];
       } else {
-        const parsed = createTaskSchema.safeParse(values);
+        if (!masterId) return setErrors({ title: 'Choose a title' });
+        const isMaster = masterId !== OTHER;
+        const parsed = createTaskSchema.safeParse({
+          title,
+          taskMasterId: isMaster ? masterId : null,
+          departmentId: departmentId ?? undefined,
+          roomIds,
+          assigneeIds,
+          description: desc,
+          dueAt,
+        });
         if (!parsed.success) return setErrors(issuesToFieldErrors(parsed.error.issues));
         setErrors({});
         setSaving(true);
-        saved = await tasksApi.create(hotelId, parsed.data);
+        saved = (await tasksApi.create(hotelId, parsed.data)).tasks;
       }
       onSaved(saved);
     } catch (e) {
@@ -189,13 +182,15 @@ export function TaskForm({
     }
   }
 
+  const createLabel = roomIds.length > 1 ? `Create ${roomIds.length} tasks` : 'Create task';
+
   return (
     <Screen
       header={header}
       footer={
         locked ? undefined : (
           <Button
-            title={editing ? 'Save changes' : 'Create task'}
+            title={editing ? 'Save changes' : createLabel}
             icon={editing ? 'check' : 'add'}
             onPress={save}
             loading={saving}
@@ -207,37 +202,75 @@ export function TaskForm({
       <ReadOnly locked={locked}>
         <SectionLabel title="What" />
         <Card>
-          <TextField
-            label="Title"
-            value={title}
-            onChangeText={setTitle}
-            error={errors.title}
-            placeholder="e.g. Clean room 101, Fix AC in 204"
-            autoCapitalize="sentences"
-            editable={!saving}
-          />
+          {editing ? (
+            <TextField
+              label="Title"
+              value={title}
+              onChangeText={setTitle}
+              error={errors.title}
+              autoCapitalize="sentences"
+              editable={!saving}
+            />
+          ) : (
+            <>
+              <SelectField
+                label="Title"
+                value={masterId}
+                options={titleOptions}
+                onChange={pickTitle}
+                placeholder="Choose what needs doing"
+                error={masterId === OTHER ? undefined : errors.title}
+                disabled={saving}
+              />
+              {masterId === OTHER ? (
+                <TextField
+                  label="Your title"
+                  value={title}
+                  onChangeText={setTitle}
+                  error={errors.title}
+                  placeholder="e.g. Fix AC in 204"
+                  autoCapitalize="sentences"
+                  editable={!saving}
+                />
+              ) : null}
+            </>
+          )}
           <SelectField
             label="Department"
-            value={department}
-            options={DEPARTMENT_OPTIONS}
+            value={departmentId}
+            options={departmentOptions}
             onChange={(v) => {
-              setDepartment(v as DepartmentKey);
-              setErrors((e) => ({ ...e, department: undefined }));
+              setDepartmentId(v);
+              setErrors((e) => ({ ...e, departmentId: undefined }));
             }}
             placeholder="Choose a department"
-            error={errors.department}
+            error={errors.departmentId}
             disabled={saving}
           />
-          <SelectField
-            label="Room (optional)"
-            value={roomId}
-            options={roomOptions}
-            onChange={setRoomId}
-            error={errors.roomId}
-            disabled={saving}
-            searchable={roomOptions.length > 8}
-            searchPlaceholder="Search room"
-          />
+          {editing ? (
+            <SelectField
+              label="Room (optional)"
+              value={roomId}
+              options={roomOptions}
+              onChange={setRoomId}
+              error={errors.roomId}
+              disabled={saving}
+              searchable={roomOptions.length > 8}
+              searchPlaceholder="Search room"
+            />
+          ) : (
+            <MultiSelectField
+              label="Rooms (optional)"
+              values={roomIds}
+              options={choices.rooms}
+              onChange={setRoomIds}
+              placeholder="No room"
+              hint={roomIds.length > 1 ? 'One task is created for each room.' : undefined}
+              error={errors.roomIds}
+              disabled={saving}
+              searchPlaceholder="Search room"
+            />
+          )}
           <TextField
             label="Details (optional)"
             value={description}
@@ -251,14 +284,14 @@ export function TaskForm({
 
         <SectionLabel title="Who and when" />
         <Card>
-          <SelectField
+          <MultiSelectField
             label="Assigned to (optional)"
-            value={assigneeId}
+            values={assigneeIds}
             options={peopleOptions}
-            onChange={setAssigneeId}
-            error={errors.assigneeId}
+            onChange={setAssigneeIds}
+            placeholder="Unassigned"
+            error={errors.assigneeIds}
             disabled={saving}
-            searchable={peopleOptions.length > 8}
             searchPlaceholder="Search name or email"
           />
           <View style={styles.pair}>

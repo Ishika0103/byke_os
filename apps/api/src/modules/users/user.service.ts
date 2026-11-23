@@ -11,38 +11,48 @@ import { type LeanBase, softDeleteUpdate, toBaseDto } from '../../db/lean-types'
 import { AppError } from '../../utils/app-error';
 import { escapeRegex, toSort } from '../../utils/query';
 import { hashPlainPassword } from '../auth/password';
+import { DepartmentModel } from '../departments/department.model';
 import { HotelModel } from '../hotels/hotel.model';
 import { RoleModel } from '../roles/role.model';
 import { UserModel } from './user.model';
 
 type LeanRoleRef = { _id: Types.ObjectId; name: string; code: string; permissions?: string[] };
 type LeanHotelRef = { _id: Types.ObjectId; name: string; code: string };
+type LeanDepartmentRef = { _id: Types.ObjectId; name: string; code: string };
 type LeanUser = LeanBase & {
   name: string;
   email: string;
+  mobile?: string | null;
   roleId: Types.ObjectId;
   hotelIds: Types.ObjectId[];
+  departmentIds?: Types.ObjectId[];
 };
-type LeanUserWithRole = Omit<LeanUser, 'roleId' | 'hotelIds'> & {
+type LeanUserWithRole = Omit<LeanUser, 'roleId' | 'hotelIds' | 'departmentIds'> & {
   roleId: LeanRoleRef | null;
   hotelIds?: LeanHotelRef[];
+  departmentIds?: LeanDepartmentRef[];
 };
 
 const ROLE_POPULATE = [
   { path: 'roleId', select: 'name code permissions' },
   { path: 'hotelIds', select: 'name code', options: { sort: { name: 1 } } },
+  { path: 'departmentIds', select: 'name code', options: { sort: { name: 1 } } },
 ];
 
 const toUserDto = (u: LeanUserWithRole): User => ({
   ...toBaseDto(u),
   name: u.name,
   email: u.email,
+  mobile: u.mobile ?? null,
   role: u.roleId ? { id: String(u.roleId._id), name: u.roleId.name, code: u.roleId.code } : null,
   // Deleted hotels drop out of the populate (base-fields plugin).
   permissions: u.roleId?.permissions ?? [],
   hotels: (u.hotelIds ?? [])
     .filter(Boolean)
     .map((h) => ({ id: String(h._id), name: h.name, code: h.code })),
+  departments: (u.departmentIds ?? [])
+    .filter(Boolean)
+    .map((d) => ({ id: String(d._id), name: d.name, code: d.code })),
 });
 
 async function findOrThrow(id: string): Promise<LeanUser> {
@@ -87,6 +97,15 @@ async function resolveHotelIds(roleId: string, hotelIds: string[]): Promise<stri
   return unique;
 }
 
+/** Plan 09: every department must exist and be active. */
+async function resolveDepartmentIds(departmentIds: string[]): Promise<string[]> {
+  const unique = [...new Set(departmentIds)];
+  if (unique.length === 0) throw AppError.field('departmentIds', 'Choose at least one department');
+  const found = await DepartmentModel.countDocuments({ _id: { $in: unique }, isActive: true });
+  if (found !== unique.length) throw AppError.field('departmentIds', 'Department not found');
+  return unique;
+}
+
 async function assertEmailFree(email: string, exceptId?: string) {
   const clash = await UserModel.exists({ email, ...(exceptId && { _id: { $ne: exceptId } }) });
   if (clash) throw AppError.conflict('EMAIL_TAKEN', 'Email already registered');
@@ -113,14 +132,15 @@ async function isLastActiveSuperAdmin(user: LeanUser): Promise<boolean> {
 
 export const userService = {
   async list(query: UserListQuery): Promise<Paginated<User>> {
-    const { page, limit, q, isActive, roleId, hotelId, sort } = query;
+    const { page, limit, q, isActive, roleId, hotelId, departmentId, sort } = query;
     const filter: Record<string, unknown> = {};
     if (isActive !== undefined) filter.isActive = isActive;
     if (roleId) filter.roleId = roleId;
     if (hotelId) filter.hotelIds = hotelId;
+    if (departmentId) filter.departmentIds = departmentId;
     if (q) {
       const rx = new RegExp(escapeRegex(q), 'i');
-      filter.$or = [{ name: rx }, { email: rx }];
+      filter.$or = [{ name: rx }, { email: rx }, { mobile: rx }];
     }
 
     const [items, total] = await Promise.all([
@@ -149,13 +169,16 @@ export const userService = {
   ): Promise<User> {
     await assertAssignableRole(input.roleId, actorIsSuperAdmin);
     const hotelIds = await resolveHotelIds(input.roleId, input.hotelIds);
+    const departmentIds = await resolveDepartmentIds(input.departmentIds);
     await assertEmailFree(input.email);
 
     const user = await UserModel.create({
       name: input.name,
       email: input.email,
+      mobile: input.mobile,
       roleId: input.roleId,
       hotelIds,
+      departmentIds,
       hashPassword: await hashPlainPassword(input.password),
       createdBy: actorId,
       updatedBy: actorId,
@@ -193,6 +216,10 @@ export const userService = {
         input.roleId ?? String(user.roleId),
         input.hotelIds ?? (user.hotelIds ?? []).map(String),
       );
+    }
+
+    if (input.departmentIds !== undefined) {
+      set.departmentIds = await resolveDepartmentIds(input.departmentIds);
     }
 
     await UserModel.updateOne({ _id: id }, { ...set, updatedBy: actorId }, { runValidators: true });

@@ -1,19 +1,22 @@
 import { Schema, model } from 'mongoose';
-import { DEPARTMENT_KEYS, TASK_STAGES, TASK_UPDATE_KINDS } from '@byke-os/shared';
+import { TASK_STAGES, TASK_UPDATE_KINDS } from '@byke-os/shared';
 import { baseFieldsPlugin } from '../../db/plugins/base-fields.plugin';
 
 /**
  * tasks (Plan 04 §2.1): the current state of one task. Indexes live in migrations:
- *   { hotelId, stage, dueAt }, { hotelId, assigneeId, stage }, { roomId }.
+ *   { hotelId, stage, dueAt }, { hotelId, departmentId, stage }, { groupId }, { hotelId, assigneeIds, stage }, { roomId }.
  */
 const taskSchema = new Schema(
   {
     hotelId: { type: Schema.Types.ObjectId, ref: 'Hotel', required: true, immutable: true },
     title: { type: String, required: true, trim: true, minlength: 3, maxlength: 120 },
     description: { type: String, trim: true, maxlength: 1000, default: null },
-    department: { type: String, enum: DEPARTMENT_KEYS, required: true },
+    taskMasterId: { type: Schema.Types.ObjectId, ref: 'TaskMaster', default: null },
+    /** Tasks created together (one per room) share a group id. */
+    groupId: { type: Schema.Types.ObjectId, required: true, immutable: true },
+    departmentId: { type: Schema.Types.ObjectId, ref: 'Department', required: true },
     roomId: { type: Schema.Types.ObjectId, ref: 'Room', default: null },
-    assigneeId: { type: Schema.Types.ObjectId, ref: 'User', default: null },
+    assigneeIds: { type: [{ type: Schema.Types.ObjectId, ref: 'User' }], default: [] },
     dueAt: { type: Date, required: true },
     stage: { type: String, enum: TASK_STAGES, required: true, default: 'pending' },
     blockedFrom: { type: String, enum: [...TASK_STAGES, null], default: null },

@@ -10,6 +10,7 @@ export type ErrorCode =
   | 'NAME_TAKEN'
   | 'ROLE_IN_USE'
   | 'ROOM_TYPE_IN_USE'
+  | 'DEPARTMENT_IN_USE'
   | 'HOTEL_IN_USE'
   | 'ROOM_NUMBER_TAKEN'
   | 'INVALID_STAGE'

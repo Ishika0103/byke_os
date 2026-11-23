@@ -1,4 +1,6 @@
+import { Types } from 'mongoose';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { up as convertTasks } from '../src/db/migrations/2026.11.24T12.00.00.tasks-departments-assignees-masters';
 import { createMigrator } from '../src/db/migrator';
 import { connectDatabase, disconnectDatabase, getDb } from '../src/db/mongoose';
 
@@ -40,11 +42,59 @@ describe('migrations', () => {
       expect.arrayContaining(['hotel_code_unique', 'hotel_name_unique_ci']),
     );
     expect(await names('tasks')).toEqual(
-      expect.arrayContaining(['hotel_stage_due', 'hotel_assignee_stage', 'roomId_1']),
+      expect.arrayContaining([
+        'hotel_stage_due',
+        'hotel_assignees_stage',
+        'hotel_department_stage',
+        'groupId_1',
+        'roomId_1',
+      ]),
     );
     expect(await names('taskUpdates')).toEqual(expect.arrayContaining(['task_createdAt']));
     expect(await names('rooms')).toEqual(
       expect.arrayContaining(['hotel_roomNumber_unique', 'roomTypeId_1', 'hotel_floor']),
     );
+  });
+
+  it('converts old tasks to departmentId, assigneeIds and groupId, and seeds task masters', async () => {
+    const db = getDb();
+    const user = new Types.ObjectId();
+    const old = await db.collection('tasks').insertMany([
+      {
+        hotelId: new Types.ObjectId(),
+        title: 'Old one',
+        department: 'maintenance',
+        assigneeId: user,
+      },
+      {
+        hotelId: new Types.ObjectId(),
+        title: 'Old two',
+        department: 'front_office',
+        assigneeId: null,
+      },
+    ]);
+    await convertTasks({ name: 'convert', context: { db } });
+    const [a, b] = await db
+      .collection('tasks')
+      .find({ _id: { $in: Object.values(old.insertedIds) } })
+      .sort({ title: 1 })
+      .toArray();
+    const dept = async (name: string) =>
+      (await db.collection('departments').findOne({ name }))!._id;
+    expect(a).toMatchObject({
+      departmentId: await dept('Maintenance'),
+      assigneeIds: [user],
+      groupId: a._id,
+      taskMasterId: null,
+    });
+    expect(b).toMatchObject({
+      departmentId: await dept('Front Office'),
+      assigneeIds: [],
+      groupId: b._id,
+    });
+    expect(a).not.toHaveProperty('department');
+    expect(a).not.toHaveProperty('assigneeId');
+    expect(await db.collection('taskMasters').countDocuments({ isDeleted: false })).toBe(5);
+    await db.collection('tasks').deleteMany({ _id: { $in: Object.values(old.insertedIds) } });
   });
 });

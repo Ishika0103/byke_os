@@ -44,6 +44,7 @@ const ICONS = {
   verified: { ios: 'checkmark.seal', md: 'verified' },
   download: { ios: 'arrow.down.circle', md: 'download' },
   upload: { ios: 'arrow.up.circle', md: 'upload_file' },
+  bell: { ios: 'bell', md: 'notifications' },
   clock: { ios: 'clock', md: 'schedule' },
 } as const satisfies Record<string, { ios: SFSymbol; md: string }>;
 

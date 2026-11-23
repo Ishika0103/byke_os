@@ -16,6 +16,16 @@ export const passwordSchema = z
 
 export const emailSchema = z.string().trim().toLowerCase().pipe(z.email('Invalid email').max(254));
 
+/**
+ * Indian mobile number: 10 digits starting 6–9. Spaces, dashes, a +91 / 91 / 0 prefix are accepted
+ * and removed, so "+91 98765 43210" is stored as "9876543210".
+ */
+export const mobileSchema = z
+  .string()
+  .trim()
+  .transform((v) => v.replace(/[\s\-()]/g, '').replace(/^(\+91|91|0)(?=\d{10}$)/, ''))
+  .pipe(z.string().regex(/^[6-9]\d{9}$/, 'Enter a 10-digit mobile number'));
+
 /** Names: trimmed, no control characters. */
 export const nameSchema = (min: number, max: number) =>
   z

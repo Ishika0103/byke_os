@@ -3,15 +3,18 @@ import { baseFieldsPlugin } from '../../db/plugins/base-fields.plugin';
 
 /**
  * users (Plan 01a §2.2). Indexes live in migrations:
- *   email unique (partial isDeleted:false), roleId, hotelIds.
+ *   email unique (partial isDeleted:false), roleId, hotelIds, departmentIds.
  */
 const userSchema = new Schema(
   {
     name: { type: String, required: true, trim: true, minlength: 2, maxlength: 80 },
     email: { type: String, required: true, trim: true, lowercase: true, maxlength: 254 },
+    mobile: { type: String, trim: true, default: null },
     roleId: { type: Schema.Types.ObjectId, ref: 'Role', required: true },
     // Hotels the user works at (Plan 05); empty for Super Admin, who sees every hotel.
     hotelIds: { type: [{ type: Schema.Types.ObjectId, ref: 'Hotel' }], default: [] },
+    // Departments the user belongs to (Plan 09); required by the API on create.
+    departmentIds: { type: [{ type: Schema.Types.ObjectId, ref: 'Department' }], default: [] },
     // bcrypt hash. Never returned: excluded from queries and from JSON output.
     hashPassword: { type: String, required: true, select: false },
   },

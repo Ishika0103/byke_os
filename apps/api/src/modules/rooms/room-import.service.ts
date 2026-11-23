@@ -307,27 +307,56 @@ export const roomImportService = {
       ]),
     );
 
+    const toCreate: { row: ImportRow; doc: Record<string, unknown> }[] = [];
+    const toUpdate: { row: ImportRow; roomNumber: string; roomTypeId: Types.ObjectId }[] = [];
     for (const r of rows) {
       if (r.action !== 'create' && r.action !== 'update') continue;
       const roomNumber = r.roomNumber.toUpperCase();
       const roomTypeId = typeId.get(typeKey(r.roomTypeCode))!;
-      try {
-        if (r.action === 'create') {
-          await RoomModel.create({
-            hotelId,
-            roomNumber,
-            roomTypeId,
-            createdBy: actorId,
-            updatedBy: actorId,
-          });
-        } else {
-          await RoomModel.updateOne({ hotelId, roomNumber }, { roomTypeId, updatedBy: actorId });
-        }
-      } catch {
-        // e.g. the same number was added by someone else a moment ago.
-        r.action = 'rejected';
-        r.errors.push('Could not be saved (the room may have just been added)');
+      if (r.action === 'create') {
+        toCreate.push({
+          row: r,
+          doc: { hotelId, roomNumber, roomTypeId, createdBy: actorId, updatedBy: actorId },
+        });
+      } else {
+        toUpdate.push({ row: r, roomNumber, roomTypeId });
       }
+    }
+    const reject = (r: ImportRow) => {
+      // e.g. the same number was added by someone else a moment ago.
+      r.action = 'rejected';
+      r.errors.push('Could not be saved (the room may have just been added)');
+    };
+
+    // New rooms in one batch; rows that fail (duplicates added meanwhile) are rejected one by one.
+    if (toCreate.length) {
+      try {
+        await RoomModel.insertMany(
+          toCreate.map((c) => c.doc),
+          { ordered: false },
+        );
+      } catch (err) {
+        const failed = new Set<number>(
+          (
+            (err as { writeErrors?: { index?: number; err?: { index?: number } }[] }).writeErrors ??
+            []
+          )
+            .map((w) => w.index ?? w.err?.index)
+            .filter((i): i is number => typeof i === 'number'),
+        );
+        if (failed.size === 0) toCreate.forEach((c) => reject(c.row));
+        else failed.forEach((i) => reject(toCreate[i].row));
+      }
+    }
+    if (toUpdate.length) {
+      await RoomModel.bulkWrite(
+        toUpdate.map((u) => ({
+          updateOne: {
+            filter: { hotelId, roomNumber: u.roomNumber },
+            update: { roomTypeId: u.roomTypeId, updatedBy: actorId },
+          },
+        })),
+      );
     }
 
     const counts = { create: 0, update: 0, unchanged: 0, rejected: 0 };

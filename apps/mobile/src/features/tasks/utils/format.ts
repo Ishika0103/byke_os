@@ -1,4 +1,4 @@
-import { departmentLabel, type Task, type TaskStage, type TaskUpdate } from '@byke-os/shared';
+import { type Task, type TaskStage, type TaskUpdate } from '@byke-os/shared';
 
 import { Colors } from '@/constants/theme';
 
@@ -85,12 +85,19 @@ export function dueText(task: Pick<Task, 'dueAt' | 'stage' | 'isOverdue'>, now =
   return { text: `Due ${dateTime(task.dueAt)}`, late: false };
 }
 
+/** "Ravi", "Ravi +2" or "Unassigned". */
+export function assigneeText(task: Pick<Task, 'assignees'>): string {
+  const [first, ...rest] = task.assignees;
+  if (!first) return 'Unassigned';
+  return rest.length ? `${first.name} +${rest.length}` : first.name;
+}
+
 /** "Room 101 · Housekeeping · Ravi" */
 export function taskSubtitle(task: Task): string {
   return [
     task.room ? `Room ${task.room.roomNumber}` : null,
-    departmentLabel(task.department),
-    task.assignee?.name ?? 'Unassigned',
+    task.department?.name,
+    assigneeText(task),
   ]
     .filter(Boolean)
     .join(' · ');
@@ -102,7 +109,7 @@ const FIELD_LABEL: Record<string, string> = {
   department: 'department',
   dueAt: 'due time',
   room: 'room',
-  assignee: 'assignee',
+  assignees: 'assigned to',
 };
 
 /** One line per timeline entry: "Ravi marked it done". */

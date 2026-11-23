@@ -7,16 +7,17 @@ import { z } from 'zod';
 import { SUPER_ADMIN_ROLE_CODE, createUserSchema } from '@byke-os/shared';
 import { env } from '../config/env';
 import { logger } from '../config/logger';
+import { DepartmentModel } from '../modules/departments/department.model';
 import { RoleModel } from '../modules/roles/role.model';
 import { UserModel } from '../modules/users/user.model';
 import { userService } from '../modules/users/user.service';
 import { connectDatabase, disconnectDatabase } from './mongoose';
 
 async function seed() {
-  const { SEED_ADMIN_NAME, SEED_ADMIN_EMAIL, SEED_ADMIN_PASSWORD } = env;
-  if (!SEED_ADMIN_NAME || !SEED_ADMIN_EMAIL || !SEED_ADMIN_PASSWORD) {
+  const { SEED_ADMIN_NAME, SEED_ADMIN_EMAIL, SEED_ADMIN_MOBILE, SEED_ADMIN_PASSWORD } = env;
+  if (!SEED_ADMIN_NAME || !SEED_ADMIN_EMAIL || !SEED_ADMIN_MOBILE || !SEED_ADMIN_PASSWORD) {
     throw new Error(
-      'Set SEED_ADMIN_NAME, SEED_ADMIN_EMAIL and SEED_ADMIN_PASSWORD in apps/api/.env',
+      'Set SEED_ADMIN_NAME, SEED_ADMIN_EMAIL, SEED_ADMIN_MOBILE and SEED_ADMIN_PASSWORD in apps/api/.env',
     );
   }
 
@@ -28,10 +29,15 @@ async function seed() {
     return;
   }
 
+  const department = await DepartmentModel.findOne({ code: 'HK' }).select('_id').lean();
+  if (!department) throw new Error('Department HK not found. Run `npm run migrate:up` first.');
+
   const parsed = createUserSchema.safeParse({
     name: SEED_ADMIN_NAME,
     email: SEED_ADMIN_EMAIL,
+    mobile: SEED_ADMIN_MOBILE,
     roleId: String(role._id),
+    departmentIds: [String(department._id)],
     password: SEED_ADMIN_PASSWORD,
   });
   if (!parsed.success) {

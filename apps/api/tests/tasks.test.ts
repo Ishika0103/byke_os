@@ -1,6 +1,7 @@
 import request from 'supertest';
 import { describe, expect, it } from 'vitest';
 import { createApp } from '../src/app';
+import { getDb } from '../src/db/mongoose';
 import { createUser, login, signedInAs, useTestDatabase, locationId } from './helpers';
 
 useTestDatabase();
@@ -10,6 +11,13 @@ const app = createApp();
 type Admin = Awaited<ReturnType<typeof signedInAs>>;
 
 const inHours = (h: number) => new Date(Date.now() + h * 3_600_000).toISOString();
+/** Id of a seeded department (the migration inserts them; tests never delete them). */
+async function dept(name: string): Promise<string> {
+  const d = await getDb().collection('departments').findOne({ name });
+  if (!d) throw new Error('Department ' + name + ' not found');
+  return String(d._id);
+}
+
 const PHOTO = '/uploads/0b6f8a52-4c1e-4f7a-9a51-6c2d9f1e2a3b.jpg';
 
 async function setup() {
@@ -33,12 +41,12 @@ async function setup() {
 async function makeTask(admin: Admin, base: string, body: object = {}) {
   const res = await admin.post(base, {
     title: 'Clean room 101',
-    department: 'housekeeping',
+    departmentId: await dept('Housekeeping'),
     dueAt: inHours(2),
     ...body,
   });
   expect(res.status).toBe(201);
-  return res.body.data as { id: string };
+  return res.body.data.tasks[0] as { id: string };
 }
 
 /** A second signed-in user (verification must be by someone else). */
@@ -53,36 +61,145 @@ async function secondUser() {
 }
 
 describe('tasks', () => {
-  it('creates a task with room and assignee, logged as created', async () => {
+  it('creates a task with room and assignees, logged as created', async () => {
     const { admin, roomId, base } = await setup();
+    const priya = await createUser({ name: 'Priya Supervisor' });
     const res = await admin.post(base, {
       title: 'Clean room 101',
-      department: 'housekeeping',
-      roomId,
-      assigneeId: admin.user.id,
+      departmentId: await dept('Housekeeping'),
+      roomIds: [roomId],
+      assigneeIds: [admin.user.id, priya.id],
       dueAt: inHours(2),
     });
     expect(res.status).toBe(201);
-    expect(res.body.data).toMatchObject({
+    expect(res.body.data.groupId).toMatch(/^[a-f0-9]{24}$/);
+    expect(res.body.data.tasks).toHaveLength(1);
+    const task = res.body.data.tasks[0];
+    expect(task).toMatchObject({
       title: 'Clean room 101',
-      department: 'housekeeping',
+      groupId: res.body.data.groupId,
+      taskMasterId: null,
+      department: { id: await dept('Housekeeping'), name: 'Housekeeping' },
       room: { id: roomId, roomNumber: '101' },
-      assignee: { id: admin.user.id, name: 'Test User' },
+      assignees: [
+        { id: admin.user.id, name: 'Test User' },
+        { id: priya.id, name: 'Priya Supervisor' },
+      ],
       stage: 'pending',
       isOverdue: false,
     });
-    expect(res.body.data.updates).toEqual([
+    const detail = await admin.get(`${base}/${task.id}`);
+    expect(detail.body.data.updates).toEqual([
       expect.objectContaining({ kind: 'created', toStage: 'pending', by: expect.any(Object) }),
     ]);
   });
 
-  it('validates input, room and assignee', async () => {
+  it('creates one task per room in one group; no rooms makes one task', async () => {
+    const { admin, hotelId, roomId, base } = await setup();
+    const types = await admin.get(`/api/v1/hotels/${hotelId}/room-types`);
+    const room2 = await admin.post(`/api/v1/hotels/${hotelId}/rooms`, {
+      roomNumber: '102',
+      roomTypeId: types.body.data.items[0].id,
+    });
+    const res = await admin.post(base, {
+      title: 'Turn down service',
+      departmentId: await dept('Housekeeping'),
+      roomIds: [roomId, room2.body.data.id, roomId],
+      assigneeIds: [admin.user.id],
+      description: 'Evening',
+      dueAt: inHours(3),
+    });
+    expect(res.status).toBe(201);
+    const { groupId, tasks } = res.body.data;
+    expect(tasks).toHaveLength(2);
+    expect(new Set(tasks.map((t: { groupId: string }) => t.groupId))).toEqual(new Set([groupId]));
+    expect(tasks.map((t: { room: { roomNumber: string } }) => t.room.roomNumber).sort()).toEqual([
+      '101',
+      '102',
+    ]);
+    for (const t of tasks) {
+      expect(t).toMatchObject({
+        title: 'Turn down service',
+        description: 'Evening',
+        stage: 'pending',
+      });
+    }
+    expect(tasks[0].id).not.toBe(tasks[1].id);
+    // Each room closes on its own.
+    await admin.post(`${base}/${tasks[0].id}/actions`, { action: 'start' });
+    expect((await admin.get(`${base}/${tasks[1].id}`)).body.data.stage).toBe('pending');
+
+    const none = await admin.post(base, {
+      title: 'Check the lobby',
+      departmentId: await dept('Front Office'),
+      dueAt: inHours(1),
+    });
+    expect(none.body.data.tasks).toHaveLength(1);
+    expect(none.body.data.tasks[0]).toMatchObject({ room: null, assignees: [] });
+  });
+
+  it('uses the master title when a master is picked, and the typed title for "Other"', async () => {
     const { admin, base } = await setup();
-    const bad = await admin.post(base, { title: 'x', department: 'kitchen', dueAt: 'soon' });
+    const masters = (await admin.get('/api/v1/task-masters')).body.data as {
+      id: string;
+      title: string;
+    }[];
+    const cleaning = masters.find((m) => m.title === 'Room Cleaning')!;
+    const picked = await admin.post(base, {
+      title: 'ignored text',
+      taskMasterId: cleaning.id,
+      departmentId: await dept('Housekeeping'),
+      dueAt: inHours(2),
+    });
+    expect(picked.body.data.tasks[0]).toMatchObject({
+      title: 'Room Cleaning',
+      taskMasterId: cleaning.id,
+    });
+    const other = await admin.post(base, {
+      title: 'Polish the lobby brass',
+      departmentId: await dept('Maintenance'),
+      dueAt: inHours(2),
+    });
+    expect(other.body.data.tasks[0]).toMatchObject({
+      title: 'Polish the lobby brass',
+      taskMasterId: null,
+    });
+    const bad = await admin.post(base, {
+      title: 'Something',
+      taskMasterId: '0'.repeat(24),
+      departmentId: await dept('Housekeeping'),
+      dueAt: inHours(2),
+    });
+    expect(bad.status).toBe(400);
+    expect(bad.body.error.details.taskMasterId).toBeDefined();
+  });
+
+  it('lists the seeded task masters with their default department', async () => {
+    const { admin } = await setup();
+    const res = await admin.get('/api/v1/task-masters');
+    expect(res.status).toBe(200);
+    expect(res.body.data.map((m: { title: string }) => m.title)).toEqual([
+      'Food Order',
+      'Guest Complaint',
+      'Laundry',
+      'Maintenance Request',
+      'Room Cleaning',
+    ]);
+    expect(res.body.data.find((m: { title: string }) => m.title === 'Food Order')).toMatchObject({
+      type: 'order',
+      department: { name: 'Food & Beverage' },
+    });
+    expect((await request(app).get('/api/v1/task-masters')).status).toBe(401);
+  });
+
+  it('validates input, rooms, department and assignees', async () => {
+    const { admin, base } = await setup();
+    const bad = await admin.post(base, { title: 'x', departmentId: 'kitchen', dueAt: 'soon' });
     expect(bad.status).toBe(400);
     expect(Object.keys(bad.body.error.details)).toEqual(
-      expect.arrayContaining(['title', 'department', 'dueAt']),
+      expect.arrayContaining(['title', 'departmentId', 'dueAt']),
     );
+    const housekeeping = await dept('Housekeeping');
 
     const other = await admin.post('/api/v1/hotels', {
       name: 'Old Anchor',
@@ -99,21 +216,28 @@ describe('tasks', () => {
     });
     const res = await admin.post(base, {
       title: 'Fix AC',
-      department: 'maintenance',
+      departmentId: housekeeping,
       dueAt: inHours(1),
-      roomId: foreignRoom.body.data.id,
+      roomIds: [foreignRoom.body.data.id],
     });
     expect(res.status).toBe(400);
-    expect(res.body.error.details.roomId).toBeDefined();
+    expect(res.body.error.details.roomIds).toBeDefined();
 
     const inactive = await createUser({ isActive: false });
     const res2 = await admin.post(base, {
       title: 'Fix AC',
-      department: 'maintenance',
+      departmentId: housekeeping,
       dueAt: inHours(1),
-      assigneeId: inactive.id,
+      assigneeIds: [admin.user.id, inactive.id],
     });
-    expect(res2.body.error.details.assigneeId).toBeDefined();
+    expect(res2.body.error.details.assigneeIds).toBeDefined();
+
+    const res3 = await admin.post(base, {
+      title: 'Fix AC',
+      departmentId: '0'.repeat(24),
+      dueAt: inHours(1),
+    });
+    expect(res3.body.error.details.departmentId).toBeDefined();
   });
 
   it('runs the full lifecycle with proof and verification by someone else', async () => {
@@ -209,9 +333,9 @@ describe('tasks', () => {
     const { id } = await makeTask(admin, base);
     const res = await admin.patch(`${base}/${id}`, {
       title: 'Deep clean room 101',
-      department: 'maintenance',
+      departmentId: await dept('Maintenance'),
       roomId,
-      assigneeId: admin.user.id,
+      assigneeIds: [admin.user.id],
     });
     expect(res.status).toBe(200);
     const edit = res.body.data.updates.at(-1);
@@ -220,7 +344,7 @@ describe('tasks', () => {
       title: { from: 'Clean room 101', to: 'Deep clean room 101' },
       department: { from: 'Housekeeping', to: 'Maintenance' },
       room: { from: null, to: '101' },
-      assignee: { from: null, to: 'Test User' },
+      assignees: { from: null, to: 'Test User' },
     });
 
     // No real change → no new log row.
@@ -231,7 +355,13 @@ describe('tasks', () => {
   it('lists by view, "me", room and overdue (late first) and counts the summary', async () => {
     const { admin, roomId, base } = await setup();
     const late = await makeTask(admin, base, { title: 'Late one', dueAt: inHours(-1) });
-    await makeTask(admin, base, { title: 'Mine', assigneeId: admin.user.id, roomId });
+    const other = await createUser({ name: 'Other Person' });
+    await makeTask(admin, base, {
+      title: 'Mine',
+      assigneeIds: [other.id, admin.user.id],
+      roomIds: [roomId],
+      departmentId: await dept('Maintenance'),
+    });
     const waiting = await makeTask(admin, base, { title: 'Waiting' });
     await admin.post(`${base}/${waiting.id}/actions`, { action: 'start' });
     await admin.post(`${base}/${waiting.id}/actions`, { action: 'done', note: 'ok' });
@@ -251,6 +381,9 @@ describe('tasks', () => {
     expect((await admin.get(`${base}?view=all`)).body.data.total).toBe(4);
     expect((await admin.get(`${base}?assigneeId=me`)).body.data.total).toBe(1);
     expect((await admin.get(`${base}?roomId=${roomId}`)).body.data.total).toBe(1);
+    const byDept = await admin.get(`${base}?departmentId=${await dept('Maintenance')}&view=all`);
+    expect(byDept.body.data.items.map((t: { title: string }) => t.title)).toEqual(['Mine']);
+    expect((await admin.get(`${base}?assigneeId=${other.id}`)).body.data.total).toBe(1);
     const overdue = await admin.get(`${base}?overdue=true&view=all`);
     expect(overdue.body.data.items.map((t: { id: string }) => t.id)).toEqual([late.id]);
 

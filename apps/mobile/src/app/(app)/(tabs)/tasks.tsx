@@ -1,4 +1,4 @@
-import { DEPARTMENTS, type DepartmentKey, type TaskView } from '@byke-os/shared';
+import type { TaskView } from '@byke-os/shared';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useState } from 'react';
 import { StyleSheet, View } from 'react-native';
@@ -13,7 +13,7 @@ import { HeaderButton, PageHeader } from '@/components/ui/page-header';
 import { SearchField } from '@/components/ui/search-field';
 import { Colors, Spacing } from '@/constants/theme';
 import { useHotel } from '@/features/hotels';
-import { TaskListItem, useNow, useTaskList } from '@/features/tasks';
+import { TaskListItem, useDepartmentChoices, useNow, useTaskList } from '@/features/tasks';
 
 const VIEWS: { value: TaskView; label: string }[] = [
   { value: 'open', label: 'Open' },
@@ -29,7 +29,7 @@ export default function TasksScreen() {
   const now = useNow();
   const [view, setView] = useState<TaskView>(params.view ?? 'open');
   const [mine, setMine] = useState(false);
-  const [department, setDepartment] = useState<DepartmentKey | null>(null);
+  const [department, setDepartment] = useState<string | null>(null);
   const [search, setSearch] = useState('');
   const [deptOpen, setDeptOpen] = useState(false);
 
@@ -41,7 +41,8 @@ export default function TasksScreen() {
   }
 
   const list = useTaskList(hotel?.id ?? '', { view, mine, department, search });
-  const deptLabel = DEPARTMENTS.find((d) => d.key === department)?.label ?? 'All departments';
+  const departments = useDepartmentChoices();
+  const deptLabel = departments.find((d) => d.value === department)?.label ?? 'All departments';
 
   return (
     <View style={styles.root}>
@@ -122,13 +123,10 @@ export default function TasksScreen() {
       <OptionDialog
         visible={deptOpen}
         title="Department"
-        options={[
-          { value: ALL, label: 'All departments' },
-          ...DEPARTMENTS.map((d) => ({ value: d.key, label: d.label })),
-        ]}
+        options={[{ value: ALL, label: 'All departments' }, ...departments]}
         value={department ?? ALL}
         onSelect={(v) => {
-          setDepartment(v === ALL ? null : (v as DepartmentKey));
+          setDepartment(v === ALL ? null : v);
           setDeptOpen(false);
         }}
         onClose={() => setDeptOpen(false)}

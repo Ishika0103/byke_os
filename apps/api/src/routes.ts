@@ -2,10 +2,13 @@ import { Router } from 'express';
 import { authenticate } from './middlewares/authenticate';
 import { buildAuthRouter } from './modules/auth/auth.routes';
 import { locationRouter } from './modules/locations/location.routes';
+import { departmentRouter } from './modules/departments/department.routes';
 import { hotelRouter } from './modules/hotels/hotel.routes';
 import { roomTypeRouter } from './modules/room-types/room-type.routes';
 import { roomRouter } from './modules/rooms/room.routes';
 import { taskRouter } from './modules/tasks/task.routes';
+import { taskMasterRouter } from './modules/task-masters/task-master.routes';
+import { notificationRouter } from './modules/notifications/notification.routes';
 import { uploadRouter } from './modules/uploads/upload.routes';
 import { healthRouter } from './modules/health/health.routes';
 import { roleRouter } from './modules/roles/role.routes';
@@ -24,6 +27,9 @@ export function buildApiRouter() {
   api.use('/roles', authenticate, roleRouter);
   api.use('/users', authenticate, userRouter);
   api.use('/locations', authenticate, locationRouter);
+  api.use('/notifications', authenticate, notificationRouter);
+  api.use('/departments', authenticate, departmentRouter);
+  api.use('/task-masters', authenticate, taskMasterRouter);
   // Hotel-owned data is nested under the hotel (CLAUDE.md).
   api.use('/hotels/:hotelId/room-types', authenticate, roomTypeRouter);
   api.use('/hotels/:hotelId/rooms', authenticate, roomRouter);

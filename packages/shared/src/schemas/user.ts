@@ -3,10 +3,12 @@ import {
   type BaseEntity,
   emailSchema,
   listQuerySchema,
+  mobileSchema,
   nameSchema,
   objectIdSchema,
   passwordSchema,
 } from './common';
+import type { DepartmentSummary } from './department';
 import type { HotelSummary } from './hotel';
 import type { RoleSummary } from './role';
 
@@ -14,12 +16,20 @@ import type { RoleSummary } from './role';
 export const MAX_USER_HOTELS = 100;
 const hotelIdsSchema = z.array(objectIdSchema).max(MAX_USER_HOTELS);
 
+/** Departments a user belongs to (Plan 09 §6): at least one, for every role. */
+const departmentIdsSchema = z
+  .array(objectIdSchema)
+  .min(1, 'Choose at least one department')
+  .max(50);
+
 export const createUserSchema = z
   .object({
     name: nameSchema(2, 80),
     email: emailSchema,
+    mobile: mobileSchema,
     roleId: objectIdSchema,
     hotelIds: hotelIdsSchema.default([]),
+    departmentIds: departmentIdsSchema,
     password: passwordSchema,
   })
   .strict()
@@ -33,8 +43,10 @@ export const updateUserSchema = z
   .object({
     name: nameSchema(2, 80),
     email: emailSchema,
+    mobile: mobileSchema,
     roleId: objectIdSchema,
     hotelIds: hotelIdsSchema,
+    departmentIds: departmentIdsSchema,
     isActive: z.boolean(),
   })
   .partial()
@@ -47,6 +59,7 @@ export const userListQuerySchema = listQuerySchema
   .extend({
     roleId: objectIdSchema.optional(),
     hotelId: objectIdSchema.optional(),
+    departmentId: objectIdSchema.optional(),
     sort: z.enum(['name', '-name', 'email', '-email', 'createdAt', '-createdAt']).default('name'),
   })
   .strict();
@@ -59,10 +72,14 @@ export type UserListQuery = z.infer<typeof userListQuerySchema>;
 export type User = BaseEntity & {
   name: string;
   email: string;
+  /** 10-digit mobile number; null for users created before it was asked for. */
+  mobile: string | null;
   /** null if the role was deleted after assignment. */
   role: RoleSummary | null;
   /** Hotels the user is mapped to (empty for Super Admin, who sees every hotel). */
   hotels: HotelSummary[];
+  /** Departments the user belongs to (empty only for users created before Plan 09). */
+  departments: DepartmentSummary[];
   /** The user's role permissions (Plan 06), for hiding buttons in the app. */
   permissions: string[];
 };

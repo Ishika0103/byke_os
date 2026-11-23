@@ -19,8 +19,14 @@ export default function NewTaskScreen() {
     <TaskForm
       hotelId={hotel.id}
       header={<PageHeader back title="Add task" subtitle={hotel.name} />}
-      onSaved={(task) =>
-        router.replace({ pathname: '/tasks/[id]', params: { id: task.id, hotelId: hotel.id } })
+      onSaved={(tasks) =>
+        // One task: open it. Several (one per room): back to the list.
+        tasks.length === 1
+          ? router.replace({
+              pathname: '/tasks/[id]',
+              params: { id: tasks[0].id, hotelId: hotel.id },
+            })
+          : router.back()
       }
     />
   );

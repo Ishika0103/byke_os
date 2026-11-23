@@ -4,9 +4,9 @@ import {
   CLOSED_STAGES,
   OPEN_STAGES,
   TASK_STAGES,
-  departmentLabel,
   type CreateTaskInput,
-  type DepartmentKey,
+  type CreatedTasks,
+  type DepartmentSummary,
   type Paginated,
   type PersonSummary,
   type Task,
@@ -21,10 +21,14 @@ import {
   type TaskView,
   type UpdateTaskInput,
 } from '@byke-os/shared';
+import type { NotificationKind } from '@byke-os/shared';
 import { type LeanBase, toBaseDto } from '../../db/lean-types';
 import { AppError } from '../../utils/app-error';
 import { escapeRegex } from '../../utils/query';
+import { DepartmentModel } from '../departments/department.model';
+import { TaskMasterModel } from '../task-masters/task-master.model';
 import { RoomModel } from '../rooms/room.model';
+import { notificationService } from '../notifications/notification.service';
 import { UserModel } from '../users/user.model';
 import { isSuperAdminRole } from '../users/user.service';
 import { TaskModel, TaskUpdateModel } from './task.model';
@@ -35,9 +39,11 @@ type LeanTask = LeanBase & {
   hotelId: Id;
   title: string;
   description: string | null;
-  department: DepartmentKey;
+  taskMasterId: Id | null;
+  groupId: Id;
+  departmentId: Id;
   roomId: Id | null;
-  assigneeId: Id | null;
+  assigneeIds: Id[];
   dueAt: Date;
   stage: TaskStage;
   blockedFrom: TaskStage | null;
@@ -88,7 +94,7 @@ const VIEW_STAGES: Record<TaskView, readonly TaskStage[]> = {
 
 const isOpen = (stage: TaskStage) => OPEN_STAGES.includes(stage);
 const iso = (d: Date | null) => (d ? d.toISOString() : null);
-const key = (id: Id | null) => (id ? String(id) : null);
+const key = (id: Id | null | undefined) => (id ? String(id) : null);
 
 const invalidStage = (message: string) => AppError.conflict('INVALID_STAGE', message);
 const changedMeanwhile = () =>
@@ -102,6 +108,20 @@ async function peopleById(ids: (Id | null)[]): Promise<Map<string, PersonSummary
     .select('name')
     .lean<{ _id: Id; name: string }[]>();
   return new Map(users.map((u) => [String(u._id), { id: String(u._id), name: u.name }]));
+}
+
+async function departmentsById(ids: Id[]): Promise<Map<string, DepartmentSummary>> {
+  const unique = [...new Set(ids.map(String))];
+  if (unique.length === 0) return new Map();
+  const departments = await DepartmentModel.find({
+    _id: { $in: unique },
+    isDeleted: { $in: [true, false] },
+  })
+    .select('name code')
+    .lean<{ _id: Id; name: string; code: string }[]>();
+  return new Map(
+    departments.map((d) => [String(d._id), { id: String(d._id), name: d.name, code: d.code }]),
+  );
 }
 
 async function roomsById(
@@ -118,9 +138,10 @@ async function roomsById(
 }
 
 async function toDtos(tasks: LeanTask[]): Promise<Task[]> {
-  const [people, rooms] = await Promise.all([
-    peopleById(tasks.flatMap((t) => [t.assigneeId, t.doneBy, t.verifiedBy])),
+  const [people, rooms, departments] = await Promise.all([
+    peopleById(tasks.flatMap((t) => [...(t.assigneeIds ?? []), t.doneBy, t.verifiedBy])),
     roomsById(tasks.map((t) => t.roomId)),
+    departmentsById(tasks.map((t) => t.departmentId)),
   ]);
   const person = (id: Id | null) => (id ? (people.get(String(id)) ?? null) : null);
   const now = new Date();
@@ -129,9 +150,11 @@ async function toDtos(tasks: LeanTask[]): Promise<Task[]> {
     hotelId: String(t.hotelId),
     title: t.title,
     description: t.description ?? null,
-    department: t.department,
+    taskMasterId: key(t.taskMasterId ?? null),
+    groupId: String(t.groupId),
+    department: departments.get(String(t.departmentId)) ?? null,
     room: t.roomId ? (rooms.get(String(t.roomId)) ?? null) : null,
-    assignee: person(t.assigneeId),
+    assignees: (t.assigneeIds ?? []).flatMap((id) => person(id) ?? []),
     dueAt: t.dueAt.toISOString(),
     stage: t.stage,
     blockedFrom: t.blockedFrom ?? null,
@@ -150,25 +173,38 @@ async function findOrThrow(hotelId: string, id: string): Promise<LeanTask> {
   return task;
 }
 
-async function assertRoom(hotelId: string, roomId: string | null | undefined) {
-  if (!roomId) return;
-  if (!(await RoomModel.exists({ _id: roomId, hotelId }))) {
-    throw AppError.field('roomId', 'Room not found in this hotel');
+async function assertRooms(hotelId: string, roomIds: string[], field = 'roomIds') {
+  if (roomIds.length === 0) return;
+  const found = await RoomModel.countDocuments({ _id: { $in: roomIds }, hotelId });
+  if (found !== roomIds.length) throw AppError.field(field, 'Room not found in this hotel');
+}
+
+async function assertDepartment(departmentId: string) {
+  if (!(await DepartmentModel.exists({ _id: departmentId, isActive: true }))) {
+    throw AppError.field('departmentId', 'Department not found or inactive');
   }
 }
 
-/** The assignee must be active and work at this hotel (Plan 05; Super Admin works everywhere). */
-async function assertAssignee(hotelId: string, userId: string | null | undefined) {
-  if (!userId) return;
-  const user = await UserModel.findOne({ _id: userId, isActive: true })
+/** Every assignee must be active and work at this hotel (Plan 05; Super Admin works everywhere). */
+async function assertAssignees(hotelId: string, userIds: string[]) {
+  if (userIds.length === 0) return;
+  const users = await UserModel.find({ _id: { $in: userIds }, isActive: true })
     .select('roleId hotelIds')
-    .lean<{ roleId: Id; hotelIds?: Id[] }>();
-  if (!user) throw AppError.field('assigneeId', 'User not found or inactive');
-  const atHotel = (user.hotelIds ?? []).some((h) => String(h) === hotelId);
-  if (!atHotel && !(await isSuperAdminRole(String(user.roleId)))) {
-    throw AppError.field('assigneeId', 'This person is not added to this hotel');
+    .lean<{ _id: Id; roleId: Id; hotelIds?: Id[] }[]>();
+  if (users.length !== userIds.length) {
+    throw AppError.field('assigneeIds', 'A selected user was not found or is inactive');
+  }
+  for (const user of users) {
+    const atHotel = (user.hotelIds ?? []).some((h) => String(h) === hotelId);
+    if (!atHotel && !(await isSuperAdminRole(String(user.roleId)))) {
+      throw AppError.field('assigneeIds', 'A selected person is not added to this hotel');
+    }
   }
 }
+
+const unique = (ids: string[] | null | undefined) => [...new Set(ids ?? [])];
+const sameSet = (a: string[], b: string[]) =>
+  a.length === b.length && a.every((x) => b.includes(x));
 
 function log(
   task: { _id: Id; hotelId: Id },
@@ -196,7 +232,7 @@ function startOfTodayIndia(now = new Date()): Date {
 
 export const taskService = {
   async list(hotelId: string, query: TaskListQuery, actorId: string): Promise<Paginated<Task>> {
-    const { page, limit, q, view, department, assigneeId, roomId, overdue } = query;
+    const { page, limit, q, view, departmentId, assigneeId, roomId, overdue } = query;
     let stages = VIEW_STAGES[view];
     const filter: Record<string, unknown> = { hotelId };
     if (overdue) {
@@ -204,8 +240,9 @@ export const taskService = {
       filter.dueAt = { $lt: new Date() };
     }
     filter.stage = { $in: stages };
-    if (department) filter.department = department;
-    if (assigneeId) filter.assigneeId = assigneeId === 'me' ? actorId : assigneeId;
+    if (departmentId) filter.departmentId = departmentId;
+    // Matches any of the task's assignees.
+    if (assigneeId) filter.assigneeIds = assigneeId === 'me' ? actorId : assigneeId;
     if (roomId) filter.roomId = roomId;
     if (q) filter.title = new RegExp(escapeRegex(q), 'i');
 
@@ -265,21 +302,58 @@ export const taskService = {
     };
   },
 
-  async create(hotelId: string, input: CreateTaskInput, actorId: string): Promise<TaskDetail> {
+  /**
+   * One task per room (or one task without a room when none is chosen), all in one group with
+   * the same title, department, details, people and due time (Plan 09 §7a).
+   */
+  async create(hotelId: string, input: CreateTaskInput, actorId: string): Promise<CreatedTasks> {
+    const roomIds = unique(input.roomIds);
+    const assigneeIds = unique(input.assigneeIds);
     await Promise.all([
-      assertRoom(hotelId, input.roomId),
-      assertAssignee(hotelId, input.assigneeId),
+      assertDepartment(input.departmentId),
+      assertRooms(hotelId, roomIds),
+      assertAssignees(hotelId, assigneeIds),
     ]);
-    const task = await TaskModel.create({
-      ...input,
-      dueAt: new Date(input.dueAt),
-      hotelId,
-      stage: 'pending',
-      createdBy: actorId,
-      updatedBy: actorId,
-    });
-    await log(task, 'created', actorId, { toStage: 'pending' });
-    return this.getById(hotelId, String(task._id));
+    let title = input.title;
+    if (input.taskMasterId) {
+      const master = await TaskMasterModel.findOne({ _id: input.taskMasterId, isActive: true })
+        .select('title')
+        .lean<{ title: string }>();
+      if (!master) throw AppError.field('taskMasterId', 'Task title not found');
+      title = master.title;
+    }
+
+    const groupId = new Types.ObjectId();
+    const tasks = await TaskModel.create(
+      (roomIds.length ? roomIds : [null]).map((roomId) => ({
+        hotelId,
+        title,
+        description: input.description ?? null,
+        taskMasterId: input.taskMasterId ?? null,
+        groupId,
+        departmentId: input.departmentId,
+        roomId,
+        assigneeIds,
+        dueAt: new Date(input.dueAt),
+        stage: 'pending',
+        createdBy: actorId,
+        updatedBy: actorId,
+      })),
+    );
+    for (const task of tasks) await log(task, 'created', actorId, { toStage: 'pending' });
+
+    for (const t of tasks) {
+      await notificationService.notify({
+        userIds: unique(input.assigneeIds ?? []),
+        hotelId,
+        taskId: String(t._id),
+        kind: 'task_assigned',
+        title: `New task: ${t.title}`,
+        exceptUserId: actorId,
+      });
+    }
+    const created = await TaskModel.find({ groupId, hotelId }).sort({ _id: 1 }).lean<LeanTask[]>();
+    return { groupId: String(groupId), tasks: await toDtos(created) };
   },
 
   /** Edits the details of an open task; each changed field is logged with before / after. */
@@ -293,12 +367,15 @@ export const taskService = {
     if (!isOpen(task.stage)) {
       throw invalidStage(`A ${STAGE_LABEL[task.stage]} task can't be edited`);
     }
-    if (input.roomId !== undefined && input.roomId !== key(task.roomId)) {
-      await assertRoom(hotelId, input.roomId);
-    }
-    if (input.assigneeId !== undefined && input.assigneeId !== key(task.assigneeId)) {
-      await assertAssignee(hotelId, input.assigneeId);
-    }
+    const roomChanged = input.roomId !== undefined && input.roomId !== key(task.roomId);
+    const oldAssignees = (task.assigneeIds ?? []).map(String);
+    const newAssignees = input.assigneeIds === undefined ? null : unique(input.assigneeIds);
+    const assigneesChanged = newAssignees !== null && !sameSet(newAssignees, oldAssignees);
+    const departmentChanged =
+      input.departmentId !== undefined && input.departmentId !== String(task.departmentId);
+    if (roomChanged) await assertRooms(hotelId, input.roomId ? [input.roomId] : [], 'roomId');
+    if (assigneesChanged) await assertAssignees(hotelId, newAssignees);
+    if (departmentChanged) await assertDepartment(input.departmentId!);
 
     const set: Record<string, unknown> = {};
     const changes: NonNullable<TaskUpdate['changes']> = {};
@@ -309,43 +386,40 @@ export const taskService = {
     };
     text('title', input.title);
     text('description', input.description);
-    if (input.department !== undefined && input.department !== task.department) {
-      set.department = input.department;
+    if (departmentChanged) {
+      const departments = await departmentsById([
+        task.departmentId,
+        new Types.ObjectId(input.departmentId),
+      ]);
+      set.departmentId = input.departmentId;
       changes.department = {
-        from: departmentLabel(task.department),
-        to: departmentLabel(input.department),
+        from: departments.get(String(task.departmentId))?.name ?? null,
+        to: departments.get(input.departmentId!)?.name ?? null,
       };
     }
     if (input.dueAt !== undefined && new Date(input.dueAt).getTime() !== task.dueAt.getTime()) {
       set.dueAt = new Date(input.dueAt);
       changes.dueAt = { from: task.dueAt.toISOString(), to: new Date(input.dueAt).toISOString() };
     }
-    const roomChanged = input.roomId !== undefined && input.roomId !== key(task.roomId);
-    const assigneeChanged =
-      input.assigneeId !== undefined && input.assigneeId !== key(task.assigneeId);
-    if (roomChanged || assigneeChanged) {
-      const ids = [task.roomId, task.assigneeId].map(key);
-      const [rooms, people] = await Promise.all([
-        roomsById([task.roomId, input.roomId ? new Types.ObjectId(input.roomId) : null]),
-        peopleById([
-          task.assigneeId,
-          input.assigneeId ? new Types.ObjectId(input.assigneeId) : null,
-        ]),
+    if (roomChanged) {
+      const rooms = await roomsById([
+        task.roomId,
+        input.roomId ? new Types.ObjectId(input.roomId) : null,
       ]);
-      if (roomChanged) {
-        set.roomId = input.roomId;
-        changes.room = {
-          from: ids[0] ? (rooms.get(ids[0])?.roomNumber ?? null) : null,
-          to: input.roomId ? (rooms.get(input.roomId)?.roomNumber ?? null) : null,
-        };
-      }
-      if (assigneeChanged) {
-        set.assigneeId = input.assigneeId;
-        changes.assignee = {
-          from: ids[1] ? (people.get(ids[1])?.name ?? null) : null,
-          to: input.assigneeId ? (people.get(input.assigneeId)?.name ?? null) : null,
-        };
-      }
+      set.roomId = input.roomId;
+      changes.room = {
+        from: task.roomId ? (rooms.get(String(task.roomId))?.roomNumber ?? null) : null,
+        to: input.roomId ? (rooms.get(input.roomId)?.roomNumber ?? null) : null,
+      };
+    }
+    if (assigneesChanged) {
+      const people = await peopleById(
+        [...oldAssignees, ...newAssignees].map((i) => new Types.ObjectId(i)),
+      );
+      const names = (ids: string[]) =>
+        ids.length ? ids.map((i) => people.get(i)?.name ?? 'Unknown').join(', ') : null;
+      set.assigneeIds = newAssignees;
+      changes.assignees = { from: names(oldAssignees), to: names(newAssignees) };
     }
     if (Object.keys(set).length === 0) return this.getById(hotelId, id);
 
@@ -356,6 +430,16 @@ export const taskService = {
     ).lean<LeanTask>();
     if (!updated) throw changedMeanwhile();
     await log(updated, 'edited', actorId, { changes });
+    if (newAssignees) {
+      await notificationService.notify({
+        userIds: newAssignees.filter((u) => !oldAssignees.includes(u)),
+        hotelId,
+        taskId: id,
+        kind: 'task_assigned',
+        title: `Task assigned to you: ${updated.title}`,
+        exceptUserId: actorId,
+      });
+    }
     return this.getById(hotelId, id);
   },
 
@@ -418,6 +502,7 @@ export const taskService = {
     ).lean<LeanTask>();
     if (!updated) throw changedMeanwhile();
 
+    await notifyAction(action, task, updated, actorId, hotelId);
     await log(updated, ACTION_KIND[action], actorId, {
       fromStage: task.stage,
       toStage: to,
@@ -427,3 +512,47 @@ export const taskService = {
     return this.getById(hotelId, id);
   },
 };
+
+const ACTION_NOTIFY: Partial<Record<TaskActionInput['action'], [NotificationKind, string]>> = {
+  start: ['task_started', 'Task started'],
+  block: ['task_blocked', 'Task blocked'],
+  done: ['task_done', 'Task done'],
+  send_back: ['task_sent_back', 'Task sent back'],
+  verify: ['task_verified', 'Task verified'],
+};
+
+/** Tells the creator and the assignees (not the person who acted) what happened. */
+async function notifyAction(
+  action: TaskActionInput['action'],
+  before: LeanTask,
+  after: LeanTask,
+  actorId: string,
+  hotelId: string,
+) {
+  const entry = ACTION_NOTIFY[action];
+  if (!entry) return;
+  const [kind, label] = entry;
+  const everyone = unique(
+    [...(after.assigneeIds ?? []).map(String), key(after.createdBy) ?? ''].filter(Boolean),
+  );
+  const taskId = String(after._id);
+  await notificationService.notify({
+    userIds: everyone,
+    hotelId,
+    taskId,
+    kind,
+    title: `${label}: ${after.title}`,
+    exceptUserId: actorId,
+  });
+  // Done work needs someone else to verify it: tell the creator.
+  if (action === 'done' && before.createdBy) {
+    await notificationService.notify({
+      userIds: [String(before.createdBy)],
+      hotelId,
+      taskId,
+      kind: 'task_needs_verification',
+      title: `Needs your verification: ${after.title}`,
+      exceptUserId: actorId,
+    });
+  }
+}

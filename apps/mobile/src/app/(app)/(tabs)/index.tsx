@@ -1,4 +1,4 @@
-import { formatLocation, SUPER_ADMIN_ROLE_CODE } from '@byke-os/shared';
+import { SUPER_ADMIN_ROLE_CODE } from '@byke-os/shared';
 import { router, useFocusEffect } from 'expo-router';
 import { useCallback } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
@@ -14,9 +14,8 @@ import { SectionLabel } from '@/components/ui/section-label';
 import { SkeletonList } from '@/components/ui/skeleton';
 import { Colors, FontFamily, Spacing } from '@/constants/theme';
 import { useAuth, usePermission } from '@/features/auth';
-import { useApiStatus } from '@/features/health';
-import { formatTime, HotelSwitcher, useHotel } from '@/features/hotels';
-import { useRoomCounts } from '@/features/rooms';
+import { HotelSwitcher, useHotel } from '@/features/hotels';
+import { NotificationBell } from '@/features/notifications';
 import { useTaskSummary } from '@/features/tasks';
 
 function greeting(date = new Date()) {
@@ -33,22 +32,12 @@ export default function HomeScreen() {
     }, [refreshUser]),
   );
   const { hotel, loading, error, reloadHotels } = useHotel();
-  const { status, database } = useApiStatus();
   const canAddHotel = usePermission('add-hotel');
   const canTasks = usePermission('view-task');
-  const counts = useRoomCounts(hotel?.id);
   const tasks = useTaskSummary(canTasks ? hotel?.id : null);
   const n = (v: number | undefined) => (v === undefined ? '–' : String(v));
   const goTasks = (view: 'open' | 'waiting' | 'closed') =>
     router.navigate({ pathname: '/tasks', params: { view } });
-  const roomsLabel =
-    counts?.rooms !== undefined
-      ? ` · ${counts.rooms === 1 ? '1 room' : `${counts.rooms} rooms`}`
-      : '';
-
-  const online = status === 'online' && database === 'connected';
-  const statusLabel =
-    status === 'checking' ? 'Checking…' : online ? 'All systems online' : 'Service unavailable';
 
   return (
     <Screen
@@ -58,13 +47,16 @@ export default function HomeScreen() {
           top={
             <View style={styles.topRow}>
               <HotelSwitcher />
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel="Settings"
-                onPress={() => router.navigate('/profile')}
-              >
-                {user ? <Avatar name={user.name} size={40} inverted /> : null}
-              </Pressable>
+              <View style={styles.actions}>
+                <NotificationBell />
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="Settings"
+                  onPress={() => router.navigate('/profile')}
+                >
+                  {user ? <Avatar name={user.name} size={40} inverted /> : null}
+                </Pressable>
+              </View>
             </View>
           }
         >
@@ -150,45 +142,13 @@ export default function HomeScreen() {
           }
         />
       )}
-
-      <SectionLabel title="Property" />
-      <CardList>
-        {hotel ? (
-          <ListRow
-            icon="hotel"
-            title={hotel.name}
-            subtitle={`${formatLocation(hotel.location)}${roomsLabel} · Check-in ${formatTime(hotel.checkInTime)}`}
-            value={hotel.code}
-            onPress={() => router.push({ pathname: '/hotels/[id]', params: { id: hotel.id } })}
-          />
-        ) : null}
-        <ListRow
-          icon="server"
-          title="Byke OS server"
-          subtitle={statusLabel}
-          trailing={
-            <View
-              style={[
-                styles.dot,
-                {
-                  backgroundColor:
-                    status === 'checking'
-                      ? Colors.textSecondary
-                      : online
-                        ? Colors.success
-                        : Colors.error,
-                },
-              ]}
-            />
-          }
-        />
-      </CardList>
     </Screen>
   );
 }
 
 const styles = StyleSheet.create({
   topRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  actions: { flexDirection: 'row', alignItems: 'center', gap: Spacing.two + 2 },
   muted: { color: Colors.textOnPrimaryMuted },
   name: { fontFamily: FontFamily.bold, fontSize: 26, lineHeight: 38, color: Colors.textOnPrimary },
   dot: { width: 10, height: 10, borderRadius: 5, marginRight: Spacing.one },

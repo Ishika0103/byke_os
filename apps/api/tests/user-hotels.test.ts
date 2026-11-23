@@ -1,7 +1,15 @@
 import { describe, expect, it } from 'vitest';
 import { createApp } from '../src/app';
 import { HotelModel } from '../src/modules/hotels/hotel.model';
-import { createHotel, createUser, grant, roleId, signedInAs, useTestDatabase } from './helpers';
+import {
+  createHotel,
+  createUser,
+  departmentId,
+  grant,
+  roleId,
+  signedInAs,
+  useTestDatabase,
+} from './helpers';
 
 useTestDatabase();
 
@@ -12,7 +20,9 @@ const inHours = (h: number) => new Date(Date.now() + h * 3_600_000).toISOString(
 const userBody = async (overrides: Record<string, unknown> = {}) => ({
   name: 'Priya Nair',
   email: 'priya@test.local',
+  mobile: '9876543210',
   roleId: await roleId('GM'),
+  departmentIds: [await departmentId()],
   password: 'Welcome123',
   ...overrides,
 });
@@ -146,18 +156,19 @@ describe('user ↔ hotel mapping (Plan 05)', () => {
     const here = await createUser({ role: 'STAFF', hotelIds: [hotel] });
     const elsewhere = await createUser({ role: 'STAFF', hotelIds: [other] });
     const base = `/api/v1/hotels/${hotel}/tasks`;
+    const housekeeping = await departmentId();
     const task = (assigneeId: string) =>
       admin.post(base, {
         title: 'Fix tap',
-        department: 'maintenance',
+        departmentId: housekeeping,
         dueAt: inHours(2),
-        assigneeId,
+        assigneeIds: [assigneeId],
       });
 
     expect((await task(here.id)).status).toBe(201);
     expect((await task(admin.user.id)).status).toBe(201);
     const bad = await task(elsewhere.id);
     expect(bad.status).toBe(400);
-    expect(bad.body.error.details.assigneeId).toBeDefined();
+    expect(bad.body.error.details.assigneeIds).toBeDefined();
   });
 });

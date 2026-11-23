@@ -1,6 +1,6 @@
 import { useFocusEffect } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
-import type { DepartmentKey, TaskDetail, TaskSummary, TaskView } from '@byke-os/shared';
+import type { TaskDetail, TaskSummary, TaskView } from '@byke-os/shared';
 
 import { useDebouncedValue } from '@/hooks/use-debounced-value';
 import { usePagedList } from '@/hooks/use-paged-list';
@@ -10,7 +10,8 @@ import { tasksApi } from '../api/tasks.api';
 export type TaskFilters = {
   view: TaskView;
   mine: boolean;
-  department: DepartmentKey | null;
+  /** Department id, or null for all. */
+  department: string | null;
   search: string;
 };
 
@@ -29,7 +30,7 @@ export function useTaskList(hotelId: string, filters: TaskFilters) {
             view,
             q,
             ...(mine && { assigneeId: 'me' }),
-            ...(department && { department }),
+            ...(department && { departmentId: department }),
           }),
     [hotelId, view, mine, department, q],
   );
