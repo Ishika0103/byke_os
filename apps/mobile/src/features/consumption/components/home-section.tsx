@@ -1,16 +1,12 @@
 import { router } from 'expo-router';
 
 import { CardList } from '@/components/ui/card';
-import { Icon } from '@/components/ui/icon';
 import { ListRow } from '@/components/ui/list-row';
 import { SectionLabel } from '@/components/ui/section-label';
 import { SkeletonList } from '@/components/ui/skeleton';
-import { ThemedText } from '@/components/themed-text';
-import { Colors } from '@/constants/theme';
-import { todayIso } from '../dates';
-import { useConsumptionSummary } from '../hooks/use-consumption';
+import { useConsumptionModules, useConsumptionWeek } from '../hooks/use-consumption';
 
-/** Home: today's consumption per module for the selected hotel (check / cross / dash). */
+/** Home: for the selected hotel, how many of the last 7 days each module was marked. */
 export function ConsumptionHomeSection({
   hotelId,
   refreshKey,
@@ -18,33 +14,27 @@ export function ConsumptionHomeSection({
   hotelId: string;
   refreshKey: number;
 }) {
-  const { summary, loading } = useConsumptionSummary(todayIso(), refreshKey);
-  const row = summary?.rows.find((r) => r.hotelId === hotelId);
+  const { modules } = useConsumptionModules();
+  const { week, loading } = useConsumptionWeek(hotelId, refreshKey);
 
   return (
     <>
-      <SectionLabel title="Consumption today" />
-      {loading && !summary ? (
+      <SectionLabel title="Consumption, last 7 days" />
+      {loading && !week ? (
         <SkeletonList rows={3} />
       ) : (
         <CardList>
-          {(summary?.modules ?? []).map((m) => {
-            const mark = row ? row.cells[m.code] : null;
+          {modules.map((m) => {
+            const w = week?.[m.code];
             return (
               <ListRow
                 key={m.code}
                 icon="chart"
                 title={m.name}
-                subtitle={mark === 1 ? 'Marked' : mark === 0 ? 'Not marked' : 'No data'}
-                trailing={
-                  mark === 1 ? (
-                    <Icon name="check" size={20} color={Colors.primary} />
-                  ) : mark === 0 ? (
-                    <Icon name="close" size={18} color={Colors.error} />
-                  ) : (
-                    <ThemedText themeColor="textSecondary">–</ThemedText>
-                  )
+                subtitle={
+                  w ? `Marked on ${w.marked} of ${w.days} days` : 'No data in the last 7 days'
                 }
+                value={w ? `${w.marked}/${w.days}` : '–'}
                 onPress={() =>
                   router.push({ pathname: '/consumption/module', params: { module: m.code } })
                 }

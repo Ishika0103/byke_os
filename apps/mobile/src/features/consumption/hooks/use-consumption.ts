@@ -3,6 +3,7 @@ import type { ConsumptionModule, ConsumptionSummary } from '@byke-os/shared';
 
 import { errorMessage } from '@/lib/form-errors';
 import { consumptionApi } from '../api/consumption.api';
+import { addDays, todayIso } from '../dates';
 
 /** One day for every property, laid out like the sheet. `reload` refetches (pull-to-refresh). */
 export function useConsumptionSummary(date: string, refreshKey = 0) {
@@ -102,4 +103,35 @@ export function useConsumptionModules() {
   }, []);
 
   return { modules, error };
+}
+
+/** The last 7 days (ending today) for one hotel: per module, days marked out of days with data. */
+export function useConsumptionWeek(hotelId: string, refreshKey = 0) {
+  const [week, setWeek] = useState<Record<string, { marked: number; days: number }> | null>(null);
+  const [loadedFor, setLoadedFor] = useState<string | null>(null);
+  const want = `${hotelId}|${refreshKey}`;
+
+  useEffect(() => {
+    let cancelled = false;
+    const to = todayIso();
+    consumptionApi
+      .list({ hotelId, from: addDays(to, -6), to, limit: 100 })
+      .then((page) => {
+        if (cancelled) return;
+        const next: Record<string, { marked: number; days: number }> = {};
+        for (const c of page.items) {
+          const m = (next[c.module] ??= { marked: 0, days: 0 });
+          m.days += 1;
+          m.marked += c.isMarked;
+        }
+        setWeek(next);
+      })
+      .catch(() => !cancelled && setWeek({}))
+      .finally(() => !cancelled && setLoadedFor(want));
+    return () => {
+      cancelled = true;
+    };
+  }, [hotelId, want]);
+
+  return { week, loading: loadedFor !== want };
 }

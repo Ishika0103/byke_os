@@ -194,14 +194,8 @@ export const consumptionService = {
         continue;
       }
       const module = moduleByLabel.get(c.moduleLabel.toLowerCase());
-      if (!module) {
-        reject(c.row, c.propertyCode, `Unknown module "${c.moduleLabel}"`);
-        continue;
-      }
-      if (!modelFor(module)) {
-        reject(c.row, c.propertyCode, `Module "${c.moduleLabel}" is not tracked yet`);
-        continue;
-      }
+      // Modules we do not track (Others, or a module without a collection yet) are skipped quietly.
+      if (!module || !modelFor(module)) continue;
       ready.push({
         hotelId,
         propertyCode: c.propertyCode,

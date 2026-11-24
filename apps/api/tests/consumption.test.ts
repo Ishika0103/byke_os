@@ -187,27 +187,21 @@ describe('consumption sync', () => {
     expect(await countRows()).toBe(1);
   });
 
-  it('rejects a module that is not in the master', async () => {
+  it('skips a module that is not in the master without counting it as rejected', async () => {
     const admin = await signedInAs(app);
     const code = await hotelCode(await createHotel('Astara'));
     serveSheet(sheet(`${code},Astara,,,,,1,1,,,,,`).replace('Engineering', 'Plumbing'));
     const res = await admin.post('/api/v1/consumption/sync');
-    expect(res.body.data.created).toBe(0);
-    expect(res.body.data.rejected).toBe(1);
-    expect(res.body.data.issues[0]).toMatchObject({
-      row: 4,
-      message: 'Unknown module "Plumbing"',
-      cells: 1,
-    });
+    expect(res.body.data).toMatchObject({ created: 0, rejected: 0, issues: [] });
   });
 
-  it('rejects a module that has no collection yet (Electricity, Water, Fuel)', async () => {
+  it('skips a module that has no collection yet (Electricity, Water, Fuel)', async () => {
     const admin = await signedInAs(app);
     const code = await hotelCode(await createHotel('Astara'));
     serveSheet(sheet(`${code},Astara,,,,,1,1,,,,,`).replace('Engineering', 'Electricity'));
     const res = await admin.post('/api/v1/consumption/sync');
     expect(res.body.data.created).toBe(0);
-    expect(res.body.data.issues[0].message).toBe('Module "Electricity" is not tracked yet');
+    expect(res.body.data).toMatchObject({ created: 0, rejected: 0, issues: [] });
   });
 
   it('only saves properties the user belongs to', async () => {
