@@ -116,7 +116,7 @@ export default function ProfileScreen() {
               icon="chart"
               title="Consumption"
               subtitle="Daily issue and consumption marking per property"
-              onPress={() => router.push('/consumption/index')}
+              onPress={() => router.push('/consumption' as never)}
             />
           ) : null}
           {isSuperAdmin ? (

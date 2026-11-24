@@ -14,7 +14,7 @@ import { AppError } from '../../utils/app-error';
 
 /** The hardcoded sheet (CSV export of the `consumption` tab). It must be shared as "anyone with the link". */
 export const CONSUMPTION_SHEET_URL =
-  'https://docs.google.com/spreadsheets/d/1QDx7W7GuwrLyfePkcVmlWeTZM6MDPlWhBziFRyFRxDg/export?format=csv&gid=1370813837';
+  'https://docs.google.com/spreadsheets/d/1FsxnM3niu1k8hcrpZgBQ7_xnY_7xvkRT4WmWugDQb-o/export?format=csv&gid=412267322';
 
 export type SheetCell = {
   /** Row number in the sheet (1-based), for messages. */
