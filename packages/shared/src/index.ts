@@ -12,3 +12,4 @@ export * from './schemas/task';
 export * from './schemas/notification';
 export * from './schemas/task-master';
 export * from './schemas/department';
+export * from './schemas/consumption';

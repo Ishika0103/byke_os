@@ -38,7 +38,7 @@ describe('migrations', () => {
     expect(await names('hotels')).toEqual(
       expect.arrayContaining(['code_unique', 'name_unique_ci', 'locationId_1']),
     );
-    expect(await names('roomTypes')).toEqual(
+    expect(await names('roomtypes')).toEqual(
       expect.arrayContaining(['hotel_code_unique', 'hotel_name_unique_ci']),
     );
     expect(await names('tasks')).toEqual(
@@ -50,10 +50,34 @@ describe('migrations', () => {
         'roomId_1',
       ]),
     );
-    expect(await names('taskUpdates')).toEqual(expect.arrayContaining(['task_createdAt']));
+    expect(await names('consumptionmodulemasters')).toEqual(
+      expect.arrayContaining(['name_unique_ci', 'code_unique']),
+    );
+    expect(await names('consumptions')).toEqual(
+      expect.arrayContaining(['hotel_date_module_unique', 'date_hotel']),
+    );
+    expect(await names('taskupdates')).toEqual(expect.arrayContaining(['task_createdAt']));
     expect(await names('rooms')).toEqual(
       expect.arrayContaining(['hotel_roomNumber_unique', 'roomTypeId_1', 'hotel_floor']),
     );
+  });
+
+  it('seeds the six consumption modules, in order, and does not seed them twice', async () => {
+    const db = getDb();
+    const modules = await db
+      .collection('consumptionmodulemasters')
+      .find({ isDeleted: false })
+      .sort({ sortOrder: 1 })
+      .toArray();
+    expect(modules.map((m) => m.code)).toEqual(['FB', 'ENG', 'HK', 'ELEC', 'WATER', 'FUEL']);
+    expect(modules.map((m) => m.name)).toEqual([
+      'F&B',
+      'Engineering',
+      'Housekeeping',
+      'Electricity',
+      'Water',
+      'Fuel',
+    ]);
   });
 
   it('converts old tasks to departmentId, assigneeIds and groupId, and seeds task masters', async () => {
@@ -94,7 +118,7 @@ describe('migrations', () => {
     });
     expect(a).not.toHaveProperty('department');
     expect(a).not.toHaveProperty('assigneeId');
-    expect(await db.collection('taskMasters').countDocuments({ isDeleted: false })).toBe(5);
+    expect(await db.collection('taskmasters').countDocuments({ isDeleted: false })).toBe(5);
     await db.collection('tasks').deleteMany({ _id: { $in: Object.values(old.insertedIds) } });
   });
 });

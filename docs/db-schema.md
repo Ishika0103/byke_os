@@ -17,10 +17,10 @@ Current state after Plan 06. The code is the source of truth (`apps/api/src/modu
 ```
 roles 1───* users *───* hotels
                           │ 1
-                          ├──* roomTypes 1───* rooms
-                          └──* tasks 1───* taskUpdates
+                          ├──* roomtypes 1───* rooms
+                          └──* tasks 1───* taskupdates
 tasks ──(optional)── rooms,  tasks ──* users (assigneeIds),  tasks ── departments
-tasks ──(optional)── taskMasters (predefined title)
+tasks ──(optional)── taskmasters (predefined title)
 ```
 
 ## roles
@@ -81,7 +81,7 @@ Filled by migration (21 Byke locations, plus any city an existing hotel used). R
 
 Indexes: `name` unique case-insensitive, `slug` unique (both partial).
 
-## roomTypes
+## roomtypes
 
 | Field             | Type              | Notes                                      |
 | ----------------- | ----------------- | ------------------------------------------ |
@@ -96,14 +96,16 @@ Indexes: `{hotelId, code}` unique, `{hotelId, name}` unique case-insensitive (bo
 
 ## rooms
 
-| Field        | Type                 | Notes                            |
-| ------------ | -------------------- | -------------------------------- |
-| `hotelId`    | ObjectId → hotels    | never changes                    |
-| `roomTypeId` | ObjectId → roomTypes |                                  |
-| `roomNumber` | String               | up to 10 chars, unique per hotel |
-| `floor`      | Number \| null       | -5 to 200                        |
-| `isSellable` | Boolean              | default true                     |
-| `notes`      | String \| null       | up to 500 chars                  |
+| Field            | Type                 | Notes                                                       |
+| ---------------- | -------------------- | ----------------------------------------------------------- |
+| `hotelId`        | ObjectId → hotels    | never changes                                               |
+| `roomTypeId`     | ObjectId → roomtypes |                                                             |
+| `roomNumber`     | String               | up to 10 chars, unique per hotel                            |
+| `floor`          | Number \| null       | -5 to 200                                                   |
+| `isSellable`     | Boolean              | default true                                                |
+| `notes`          | String \| null       | up to 500 chars                                             |
+| `importFileUrl`  | String \| null       | Excel file that last created or changed this room (Plan 11) |
+| `importFileName` | String \| null       | name of that Excel file                                     |
 
 Indexes: `{hotelId, roomNumber}` unique (partial), `roomTypeId`, `{hotelId, floor}`.
 
@@ -127,7 +129,7 @@ Indexes: `{hotelId, roomNumber}` unique (partial), `roomTypeId`, `{hotelId, floo
 
 Indexes: `{hotelId, stage, dueAt}`, `{hotelId, assigneeIds, stage}`, `{hotelId, departmentId, stage}`, `groupId`, `roomId`.
 
-## taskMasters (predefined task titles, seeded by migration only)
+## taskmasters (predefined task titles, seeded by migration only)
 
 | Field          | Type             | Notes                                               |
 | -------------- | ---------------- | --------------------------------------------------- |
@@ -137,7 +139,7 @@ Indexes: `{hotelId, stage, dueAt}`, `{hotelId, assigneeIds, stage}`, `{hotelId, 
 
 Seed: Room Cleaning, Guest Complaint, Food Order, Maintenance Request, Laundry. Index: `title` unique (case-insensitive, partial on `isDeleted: false`). Read-only API: `GET /task-masters`.
 
-## taskUpdates (append-only log: rows are never edited or deleted)
+## taskupdates (append-only log: rows are never edited or deleted)
 
 | Field                    | Type           | Notes                                                                              |
 | ------------------------ | -------------- | ---------------------------------------------------------------------------------- |
@@ -165,6 +167,30 @@ Index: `{taskId, createdAt}`.
 | `dedupeKey` | String (optional) | e.g. `overdue:<taskId>`; a user never gets the same key twice                                                              |
 
 Indexes: `{userId, readAt, createdAt:-1}`, unique partial `{userId, dedupeKey}` (where `dedupeKey` is a string).
+
+## consumptionmodulemasters (the six consumption modules, seeded by migration only)
+
+Not the `departments` collection.
+
+| Field       | Type   | Notes                                                                            |
+| ----------- | ------ | -------------------------------------------------------------------------------- |
+| `name`      | String | F&B, Engineering, Housekeeping, Electricity, Water, Fuel (unique, ignoring case) |
+| `code`      | String | FB, ENG, HK, ELEC, WATER, FUEL (unique)                                          |
+| `sortOrder` | Number | 1 to 6, column order on screens                                                  |
+
+## consumptions (one row per property, date and module)
+
+Filled by `POST /consumption/sync`, which reads a hardcoded Google Sheet. Only the sheet's **Consumption** column is read (its Issue columns are hidden and ignored). A row for the same property, date and module is updated, otherwise created.
+
+| Field          | Type              | Notes                                               |
+| -------------- | ----------------- | --------------------------------------------------- |
+| `hotelId`      | ObjectId → hotels | found from the sheet's Property Code                |
+| `propertyCode` | String            | the code as in the sheet                            |
+| `date`         | Date              | the calendar day at **00:00 UTC**; read it in UTC   |
+| `module`       | String            | module code (FB, ENG, HK, ELEC, WATER, FUEL)        |
+| `isMarked`     | Number            | 0 = not marked, 1 = marked (the Consumption column) |
+
+Indexes: unique partial `{hotelId, date, module}`, `{date:-1, hotelId}`.
 
 ## migrations (managed by umzug)
 

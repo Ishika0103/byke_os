@@ -21,11 +21,12 @@ export function useTestDatabase() {
     await db.collection('users').deleteMany({});
     await db.collection('roles').deleteMany({});
     await db.collection('hotels').deleteMany({});
-    await db.collection('roomTypes').deleteMany({});
+    await db.collection('roomtypes').deleteMany({});
     await db.collection('rooms').deleteMany({});
     await db.collection('tasks').deleteMany({});
-    await db.collection('taskUpdates').deleteMany({});
+    await db.collection('taskupdates').deleteMany({});
     await db.collection('notifications').deleteMany({});
+    await db.collection('consumptions').deleteMany({});
     await seedSystemRoles({ name: 'seed-system-roles', context: { db } });
     // Apply later migrations that reshape the seeded roles, as on a real database.
     await removeDeletedAt({ name: 'remove-deleted-at', context: { db } });

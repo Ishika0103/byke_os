@@ -142,7 +142,21 @@ describe('hotels CRUD', () => {
     expect((await admin.delete(`/api/v1/hotels/${id}`)).status).toBe(204);
     expect((await admin.get(`/api/v1/hotels/${id}`)).status).toBe(404);
     expect((await admin.get('/api/v1/hotels')).body.data.total).toBe(0);
-    expect((await admin.post('/api/v1/hotels', ASTARA)).status).toBe(201);
+    const again = await admin.post('/api/v1/hotels', ASTARA);
+    expect(again.status).toBe(201);
+    expect(again.body.data.code).toBe('AST');
+  });
+
+  it('gives different codes to hotels created at the same moment', async () => {
+    const admin = await signedInAs(app);
+    const names = ['Astara', 'Astoria', 'Astral', 'Astrid', 'Astley'];
+    const results = await Promise.all(
+      names.map((name) => admin.post('/api/v1/hotels', { ...ASTARA, name })),
+    );
+    expect(results.map((r) => r.status)).toEqual([201, 201, 201, 201, 201]);
+    const codes = results.map((r) => r.body.data.code as string);
+    expect(new Set(codes).size).toBe(5);
+    expect(codes.every((c) => /^AST\d*$/.test(c))).toBe(true);
   });
 });
 

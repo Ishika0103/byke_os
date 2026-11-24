@@ -7,6 +7,8 @@ import { hotelRouter } from './modules/hotels/hotel.routes';
 import { roomTypeRouter } from './modules/room-types/room-type.routes';
 import { roomRouter } from './modules/rooms/room.routes';
 import { taskRouter } from './modules/tasks/task.routes';
+import { consumptionRouter } from './modules/consumption/consumption.routes';
+import { consumptionModuleRouter } from './modules/consumption-modules/consumption-module.routes';
 import { taskMasterRouter } from './modules/task-masters/task-master.routes';
 import { notificationRouter } from './modules/notifications/notification.routes';
 import { uploadRouter } from './modules/uploads/upload.routes';
@@ -30,6 +32,8 @@ export function buildApiRouter() {
   api.use('/notifications', authenticate, notificationRouter);
   api.use('/departments', authenticate, departmentRouter);
   api.use('/task-masters', authenticate, taskMasterRouter);
+  api.use('/consumption-modules', authenticate, consumptionModuleRouter);
+  api.use('/consumption', authenticate, consumptionRouter);
   // Hotel-owned data is nested under the hotel (CLAUDE.md).
   api.use('/hotels/:hotelId/room-types', authenticate, roomTypeRouter);
   api.use('/hotels/:hotelId/rooms', authenticate, roomRouter);

@@ -117,16 +117,21 @@ export const hotelService = {
   async create(input: CreateHotelInput, actorId: string | null): Promise<Hotel> {
     await assertNameFree(input.name);
     await assertLocation(input.locationId);
-    const code = await firstFreeCode(hotelCodeFromName(input.name), (c) =>
-      HotelModel.exists({ code: c }),
-    );
-
-    const hotel = await HotelModel.create({
-      ...input,
-      code,
-      createdBy: actorId,
-      updatedBy: actorId,
-    });
+    // A deleted hotel's code may be reused. If two hotels are created at the same moment and
+    // pick the same code, the unique index stops the second one; it retries with the next free code.
+    const base = hotelCodeFromName(input.name);
+    let hotel;
+    for (let attempt = 0; ; attempt++) {
+      const code = await firstFreeCode(base, (c) => HotelModel.exists({ code: c }));
+      try {
+        hotel = await HotelModel.create({ ...input, code, createdBy: actorId, updatedBy: actorId });
+        break;
+      } catch (err) {
+        const dup = err as { code?: number; keyPattern?: Record<string, unknown> };
+        if (dup.code === 11000 && dup.keyPattern?.code && attempt < 4) continue;
+        throw err;
+      }
+    }
     return this.getById(String(hotel._id));
   },
 

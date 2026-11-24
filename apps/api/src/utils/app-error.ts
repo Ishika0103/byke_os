@@ -15,7 +15,9 @@ export type ErrorCode =
   | 'ROOM_NUMBER_TAKEN'
   | 'INVALID_STAGE'
   | 'SELF_VERIFY'
+  | 'NOT_VERIFIER'
   | 'CONFLICT'
+  | 'SHEET_UNAVAILABLE'
   | 'TOO_MANY_REQUESTS'
   | 'INTERNAL_ERROR';
 

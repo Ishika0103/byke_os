@@ -17,6 +17,7 @@ export const PERMISSION_MODULES = [
   { key: 'rooms', label: 'Rooms', noun: 'room' },
   { key: 'tasks', label: 'Tasks', noun: 'task' },
   { key: 'departments', label: 'Departments', noun: 'department' },
+  { key: 'consumption', label: 'Consumption', noun: 'consumption' },
 ] as const;
 
 type Noun = (typeof PERMISSION_MODULES)[number]['noun'];
