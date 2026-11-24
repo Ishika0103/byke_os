@@ -39,6 +39,19 @@ function serveSheet(csv: string | null) {
   );
 }
 
+const COLLECTIONS = [
+  'fnbdailyconsumptions',
+  'engineeringdailyconsumptions',
+  'housekeepingdailyconsumptions',
+];
+async function allRows() {
+  const parts = await Promise.all(COLLECTIONS.map((c) => getDb().collection(c).find({}).toArray()));
+  return parts.flat();
+}
+async function countRows() {
+  return (await allRows()).length;
+}
+
 async function hotelCode(id: string) {
   const h = await getDb()
     .collection('hotels')
@@ -116,11 +129,11 @@ describe('consumption sync', () => {
     const preview = await admin.post('/api/v1/consumption/sync?preview=true');
     expect(preview.status).toBe(200);
     expect(preview.body.data).toMatchObject({ saved: false, created: 3, updated: 0, unchanged: 0 });
-    expect(await getDb().collection('consumptions').countDocuments()).toBe(0);
+    expect(await countRows()).toBe(0);
 
     const first = await admin.post('/api/v1/consumption/sync');
     expect(first.body.data).toMatchObject({ saved: true, created: 3, rejected: 0, issues: [] });
-    const rows = await getDb().collection('consumptions').find({}).toArray();
+    const rows = await allRows();
     expect(rows).toHaveLength(3);
     expect(rows[0]).toMatchObject({ propertyCode: code, isActive: true, isDeleted: false });
     expect(String(rows[0].createdBy)).toBe(admin.user.id);
@@ -128,7 +141,18 @@ describe('consumption sync', () => {
 
     const again = await admin.post('/api/v1/consumption/sync');
     expect(again.body.data).toMatchObject({ created: 0, updated: 0, unchanged: 3 });
-    expect(await getDb().collection('consumptions').countDocuments()).toBe(3);
+    expect(await countRows()).toBe(3);
+  });
+
+  it('keeps each module in its own collection', async () => {
+    const admin = await signedInAs(app);
+    const code = await hotelCode(await createHotel('Astara'));
+    serveSheet(sheet(`${code},Astara,,,0,1,0,0,0,1,,,`));
+    await admin.post('/api/v1/consumption/sync');
+    const count = (c: string) => getDb().collection(c).countDocuments();
+    expect(await count('fnbdailyconsumptions')).toBe(1);
+    expect(await count('engineeringdailyconsumptions')).toBe(1);
+    expect(await count('housekeepingdailyconsumptions')).toBe(0); // not in this sheet
   });
 
   it('updates a changed value in place (no duplicate row) and matches modules by name or code', async () => {
@@ -142,7 +166,7 @@ describe('consumption sync', () => {
     const res = await admin.post('/api/v1/consumption/sync');
     expect(res.body.data).toMatchObject({ created: 0, updated: 1, unchanged: 1 });
 
-    const rows = await getDb().collection('consumptions').find({ module: 'FB' }).toArray();
+    const rows = await getDb().collection('fnbdailyconsumptions').find({}).toArray();
     expect(rows).toHaveLength(1); // updated in place, not duplicated
     expect(rows[0]).toMatchObject({ isMarked: 1 });
     expect(rows[0]).not.toHaveProperty('type');
@@ -160,7 +184,7 @@ describe('consumption sync', () => {
       (i: { row: number; message: string }) => `${i.row}: ${i.message}`,
     );
     expect(messages).toEqual(expect.arrayContaining(['5: Property Code "NOPE9" does not exist']));
-    expect(await getDb().collection('consumptions').countDocuments()).toBe(1);
+    expect(await countRows()).toBe(1);
   });
 
   it('rejects a module that is not in the master', async () => {
@@ -177,6 +201,15 @@ describe('consumption sync', () => {
     });
   });
 
+  it('rejects a module that has no collection yet (Electricity, Water, Fuel)', async () => {
+    const admin = await signedInAs(app);
+    const code = await hotelCode(await createHotel('Astara'));
+    serveSheet(sheet(`${code},Astara,,,,,1,1,,,,,`).replace('Engineering', 'Electricity'));
+    const res = await admin.post('/api/v1/consumption/sync');
+    expect(res.body.data.created).toBe(0);
+    expect(res.body.data.issues[0].message).toBe('Module "Electricity" is not tracked yet');
+  });
+
   it('only saves properties the user belongs to', async () => {
     const mine = await createHotel('Mine');
     const other = await createHotel('Other');
@@ -191,7 +224,7 @@ describe('consumption sync', () => {
     expect(res.status).toBe(200);
     expect(res.body.data).toMatchObject({ created: 1, rejected: 1 });
     expect(res.body.data.issues[0].message).toContain('not one of your properties');
-    const saved = await getDb().collection('consumptions').find({}).toArray();
+    const saved = await allRows();
     expect(saved.every((r) => r.propertyCode === mineCode)).toBe(true);
   });
 
@@ -213,7 +246,7 @@ describe('consumption sync', () => {
     const res = await admin.post('/api/v1/consumption/sync');
     expect(res.status).toBe(502);
     expect(res.body.error.code).toBe('SHEET_UNAVAILABLE');
-    expect(await getDb().collection('consumptions').countDocuments()).toBe(0);
+    expect(await countRows()).toBe(0);
 
     vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('offline')));
     expect((await admin.post('/api/v1/consumption/sync')).status).toBe(502);

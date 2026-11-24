@@ -53,9 +53,15 @@ describe('migrations', () => {
     expect(await names('consumptionmodulemasters')).toEqual(
       expect.arrayContaining(['name_unique_ci', 'code_unique']),
     );
-    expect(await names('consumptions')).toEqual(
-      expect.arrayContaining(['hotel_date_module_unique', 'date_hotel']),
-    );
+    for (const c of [
+      'fnbdailyconsumptions',
+      'engineeringdailyconsumptions',
+      'housekeepingdailyconsumptions',
+    ]) {
+      expect(await names(c)).toEqual(
+        expect.arrayContaining(['hotel_date_module_unique', 'date_hotel']),
+      );
+    }
     expect(await names('taskupdates')).toEqual(expect.arrayContaining(['task_createdAt']));
     expect(await names('rooms')).toEqual(
       expect.arrayContaining(['hotel_roomNumber_unique', 'roomTypeId_1', 'hotel_floor']),

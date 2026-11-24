@@ -1,6 +1,6 @@
 # Plan 12: Consumption module
 
-> Status: ✅ Built (2026-11-24). **Decision (2026-11-25): only the sheet's Consumption column is used (its Issue columns are hidden), so there is no `type` field; one row per property + date + module** (migration `consumptions-drop-type`). Home shows a "Consumption today" section; tapping a module opens a month calendar, tapping a day opens that day. The live sheet still needs a Property Code column. Later: a scheduler that runs the sync, with a log of runs and old → new values.
+> Status: ✅ Built (2026-11-24). **Decision (2026-11-25): only the sheet's Consumption column is used (its Issue columns are hidden), so there is no `type` field; one row per property + date + module** (migration `consumptions-drop-type`). Home shows a "Consumption today" section; tapping a module opens a month calendar, tapping a day opens that day. The live sheet still needs a Property Code column. Later: a scheduler that runs the sync, with a log of runs and old → new values. **Decision (2026-11-25): each module has its own collection (`fnbdailyconsumptions`, `engineeringdailyconsumptions`, `housekeepingdailyconsumptions`); the single `consumptions` collection was replaced (migration `split-consumptions-by-module`).**
 > Source: Google Sheet "consumption" (tab `gid=1370813837`) and the **consumption module master** list from the team: F&B, Engineering, Housekeeping, Electricity, Water, Fuel.
 
 ## 1. What it is

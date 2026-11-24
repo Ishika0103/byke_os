@@ -26,7 +26,13 @@ export function useTestDatabase() {
     await db.collection('tasks').deleteMany({});
     await db.collection('taskupdates').deleteMany({});
     await db.collection('notifications').deleteMany({});
-    await db.collection('consumptions').deleteMany({});
+    for (const c of [
+      'fnbdailyconsumptions',
+      'engineeringdailyconsumptions',
+      'housekeepingdailyconsumptions',
+    ]) {
+      await db.collection(c).deleteMany({});
+    }
     await seedSystemRoles({ name: 'seed-system-roles', context: { db } });
     // Apply later migrations that reshape the seeded roles, as on a real database.
     await removeDeletedAt({ name: 'remove-deleted-at', context: { db } });

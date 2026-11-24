@@ -178,19 +178,19 @@ Not the `departments` collection.
 | `code`      | String | FB, ENG, HK, ELEC, WATER, FUEL (unique)                                          |
 | `sortOrder` | Number | 1 to 6, column order on screens                                                  |
 
-## consumptions (one row per property, date and module)
+## fnbdailyconsumptions, engineeringdailyconsumptions, housekeepingdailyconsumptions
 
-Filled by `POST /consumption/sync`, which reads a hardcoded Google Sheet. Only the sheet's **Consumption** column is read (its Issue columns are hidden and ignored). A row for the same property, date and module is updated, otherwise created.
+One collection per module (F&B, Engineering, Housekeeping), same shape, one row per property and date. Filled by `POST /consumption/sync`, which reads a hardcoded Google Sheet; only its **Consumption** column is used. A row for the same property, date and module is updated, otherwise created. Modules without a collection yet (Electricity, Water, Fuel, Others) are rejected by the sync.
 
-| Field          | Type              | Notes                                               |
-| -------------- | ----------------- | --------------------------------------------------- |
-| `hotelId`      | ObjectId → hotels | found from the sheet's Property Code                |
-| `propertyCode` | String            | the code as in the sheet                            |
-| `date`         | Date              | the calendar day at **00:00 UTC**; read it in UTC   |
-| `module`       | String            | module code (FB, ENG, HK, ELEC, WATER, FUEL)        |
-| `isMarked`     | Number            | 0 = not marked, 1 = marked (the Consumption column) |
+| Field          | Type              | Notes                                             |
+| -------------- | ----------------- | ------------------------------------------------- |
+| `hotelId`      | ObjectId → hotels | found from the sheet's Property Code              |
+| `propertyCode` | String            | the code as in the sheet                          |
+| `date`         | Date              | the calendar day at **00:00 UTC**; read it in UTC |
+| `module`       | String            | FB, ENG or HK (same as the collection)            |
+| `isMarked`     | Number            | 0 = not marked, 1 = marked                        |
 
-Indexes: unique partial `{hotelId, date, module}`, `{date:-1, hotelId}`.
+Indexes (each collection): unique partial `{hotelId, date, module}`, `{date:-1, hotelId}`.
 
 ## migrations (managed by umzug)
 

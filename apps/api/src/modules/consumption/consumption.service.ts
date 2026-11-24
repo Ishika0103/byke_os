@@ -12,7 +12,7 @@ import { type LeanBase, toBaseDto } from '../../db/lean-types';
 import { AppError } from '../../utils/app-error';
 import { HotelModel } from '../hotels/hotel.model';
 import { ConsumptionModuleModel } from '../consumption-modules/consumption-module.model';
-import { ConsumptionModel } from './consumption.model';
+import { ConsumptionModels, modelFor } from './consumption.model';
 import {
   downloadConsumptionSheet,
   parseConsumptionSheet,
@@ -60,15 +60,29 @@ export const consumptionService = {
     }
     if (module) filter.module = module;
 
-    const [items, total] = await Promise.all([
-      ConsumptionModel.find(filter)
-        .sort({ date: -1, propertyCode: 1, module: 1 })
-        .skip((page - 1) * limit)
-        .limit(limit)
-        .lean<LeanConsumption[]>(),
-      ConsumptionModel.countDocuments(filter),
-    ]);
-    return { items: items.map(toDto), page, limit, total };
+    // One collection per module: ask each one, then merge and page the rows.
+    const models = module ? [modelFor(module)].filter(Boolean) : Object.values(ConsumptionModels);
+    const parts = await Promise.all(
+      models.map(async (m) => ({
+        items: await m
+          .find(filter)
+          .sort({ date: -1, propertyCode: 1, module: 1 })
+          .limit(page * limit)
+          .lean<LeanConsumption[]>(),
+        total: await m.countDocuments(filter),
+      })),
+    );
+    const merged = parts
+      .flatMap((p) => p.items)
+      .sort(
+        (a, b) =>
+          b.date.getTime() - a.date.getTime() ||
+          a.propertyCode.localeCompare(b.propertyCode) ||
+          a.module.localeCompare(b.module),
+      )
+      .slice((page - 1) * limit, page * limit);
+    const total = parts.reduce((n, p) => n + p.total, 0);
+    return { items: merged.map(toDto), page, limit, total };
   },
 
   /** One day for every property the user can see, laid out like the sheet, with its Total row. */
@@ -77,10 +91,18 @@ export const consumptionService = {
       ConsumptionModuleModel.find({ isActive: true })
         .sort({ sortOrder: 1 })
         .lean<{ code: string; name: string }[]>(),
-      ConsumptionModel.find({
-        date: day(date),
-        ...(scope !== null && { hotelId: { $in: scope.map((id) => new Types.ObjectId(id)) } }),
-      }).lean<LeanConsumption[]>(),
+      Promise.all(
+        Object.values(ConsumptionModels).map((m) =>
+          m
+            .find({
+              date: day(date),
+              ...(scope !== null && {
+                hotelId: { $in: scope.map((id) => new Types.ObjectId(id)) },
+              }),
+            })
+            .lean<LeanConsumption[]>(),
+        ),
+      ).then((parts) => parts.flat()),
     ]);
     const hotels = await HotelModel.find({
       _id: { $in: [...new Set(rows.map((r) => String(r.hotelId)))] },
@@ -176,6 +198,10 @@ export const consumptionService = {
         reject(c.row, c.propertyCode, `Unknown module "${c.moduleLabel}"`);
         continue;
       }
+      if (!modelFor(module)) {
+        reject(c.row, c.propertyCode, `Module "${c.moduleLabel}" is not tracked yet`);
+        continue;
+      }
       ready.push({
         hotelId,
         propertyCode: c.propertyCode,
@@ -189,14 +215,21 @@ export const consumptionService = {
     const existing = new Map<string, IsMarked>();
     if (ready.length) {
       const times = ready.map((r) => r.date.getTime());
-      const stored = await ConsumptionModel.find({
-        hotelId: {
-          $in: [...new Set(ready.map((r) => r.hotelId))].map((id) => new Types.ObjectId(id)),
-        },
-        date: { $gte: new Date(Math.min(...times)), $lte: new Date(Math.max(...times)) },
-      })
-        .select('hotelId date module isMarked')
-        .lean<LeanConsumption[]>();
+      const hotelIds = [...new Set(ready.map((r) => r.hotelId))].map(
+        (id) => new Types.ObjectId(id),
+      );
+      const range = { $gte: new Date(Math.min(...times)), $lte: new Date(Math.max(...times)) };
+      const used = [...new Set(ready.map((r) => r.module))];
+      const stored = (
+        await Promise.all(
+          used.map((code) =>
+            modelFor(code)
+              .find({ hotelId: { $in: hotelIds }, date: range })
+              .select('hotelId date module isMarked')
+              .lean<LeanConsumption[]>(),
+          ),
+        )
+      ).flat();
       for (const s of stored) {
         existing.set(`${s.hotelId}|${s.date.toISOString()}|${s.module}`, s.isMarked);
       }
@@ -220,24 +253,27 @@ export const consumptionService = {
     }
 
     if (!preview) {
-      for (let i = 0; i < toWrite.length; i += BATCH) {
-        await ConsumptionModel.bulkWrite(
-          toWrite.slice(i, i + BATCH).map((r) => ({
-            updateOne: {
-              filter: {
-                hotelId: new Types.ObjectId(r.hotelId),
-                date: r.date,
-                module: r.module,
-                isDeleted: false,
+      for (const code of new Set(toWrite.map((r) => r.module))) {
+        const rows = toWrite.filter((r) => r.module === code);
+        for (let i = 0; i < rows.length; i += BATCH) {
+          await modelFor(code).bulkWrite(
+            rows.slice(i, i + BATCH).map((r) => ({
+              updateOne: {
+                filter: {
+                  hotelId: new Types.ObjectId(r.hotelId),
+                  date: r.date,
+                  module: r.module,
+                  isDeleted: false,
+                },
+                update: {
+                  $set: { isMarked: r.isMarked, propertyCode: r.propertyCode, updatedBy: actorId },
+                  $setOnInsert: { isActive: true, createdBy: actorId },
+                },
+                upsert: true,
               },
-              update: {
-                $set: { isMarked: r.isMarked, propertyCode: r.propertyCode, updatedBy: actorId },
-                $setOnInsert: { isActive: true, createdBy: actorId },
-              },
-              upsert: true,
-            },
-          })),
-        );
+            })),
+          );
+        }
       }
     }
 
