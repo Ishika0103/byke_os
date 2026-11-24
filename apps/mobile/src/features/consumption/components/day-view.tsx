@@ -10,15 +10,19 @@ import { Icon } from '@/components/ui/icon';
 import { Loader } from '@/components/ui/loader';
 import { Screen } from '@/components/ui/screen';
 import { Colors, FontFamily, Spacing } from '@/constants/theme';
+import { useHotel } from '@/features/hotels';
 import { usePullRefresh } from '@/hooks/use-pull-refresh';
 import { addDays, formatDay, todayIso } from '../dates';
 import { useConsumptionSummary } from '../hooks/use-consumption';
 
-/** Plan 12: one day, a card per property with a mark per module, plus the Total. */
+/** Plan 12: one day for the selected hotel (all properties plus a Total when none is selected). */
 export function DayView({ header, initialDate }: { header: ReactNode; initialDate?: string }) {
   const [date, setDate] = useState(initialDate ?? todayIso());
   const { summary, loading, error, reload } = useConsumptionSummary(date);
   const { refreshing, onRefresh } = usePullRefresh(reload);
+  const { hotel } = useHotel();
+  // Follow the hotel switcher: only the selected hotel's card.
+  const rows = (summary?.rows ?? []).filter((r) => !hotel || r.hotelId === hotel.id);
 
   return (
     <Screen header={header} onRefresh={onRefresh} refreshing={refreshing}>
@@ -46,16 +50,16 @@ export function DayView({ header, initialDate }: { header: ReactNode; initialDat
       {error ? <Banner message={error} /> : null}
       {loading ? <Loader label="Loading…" style={styles.loader} /> : null}
 
-      {!loading && summary && summary.rows.length === 0 ? (
+      {!loading && summary && rows.length === 0 ? (
         <Card>
-          <ThemedText themeColor="textSecondary">No properties to show for this day.</ThemedText>
+          <ThemedText themeColor="textSecondary">No data for this day.</ThemedText>
         </Card>
       ) : null}
 
-      {!loading && summary && summary.rows.length > 0 ? (
+      {!loading && summary && rows.length > 0 ? (
         <>
-          <TotalCard summary={summary} />
-          {summary.rows.map((row) => (
+          {hotel ? null : <TotalCard summary={summary} />}
+          {rows.map((row) => (
             <Card key={row.hotelId}>
               <ThemedText style={styles.title}>{row.hotelName}</ThemedText>
               <ThemedText type="caption" themeColor="textSecondary">
