@@ -46,8 +46,13 @@ export const roomController = {
       req.file?.buffer,
       requireAuth(req).userId,
       canEditRooms(req),
+      req.file?.originalname,
     );
     ok(res, result);
+  },
+
+  async importHistory(req: Request<HotelParams>, res: Response) {
+    ok(res, await roomImportService.history(req.params.hotelId));
   },
 
   async importRejected(req: Request<HotelParams>, res: Response) {

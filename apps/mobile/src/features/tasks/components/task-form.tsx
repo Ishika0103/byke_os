@@ -1,4 +1,4 @@
-import { usePermission } from '@/features/auth';
+import { useAuth, usePermission } from '@/features/auth';
 import { ReadOnly } from '@/components/ui/read-only';
 import { useMemo, useState, type ReactNode } from 'react';
 import { StyleSheet, View } from 'react-native';
@@ -75,6 +75,7 @@ export function TaskForm({
   const locked = editing && !canEdit;
   const initialDue = useMemo(() => (task ? new Date(task.dueAt) : defaultDue()), [task]);
   const choices = useTaskChoices(hotelId);
+  const { user } = useAuth();
 
   const [masterId, setMasterId] = useState<string | null>(null);
   const [title, setTitle] = useState(task?.title ?? '');
@@ -82,6 +83,10 @@ export function TaskForm({
   const [roomIds, setRoomIds] = useState<string[]>([]);
   const [roomId, setRoomId] = useState(task?.room?.id ?? NONE);
   const [assigneeIds, setAssigneeIds] = useState<string[]>(task?.assignees.map((a) => a.id) ?? []);
+  // New tasks default the verifier to the creator; they can pick someone else.
+  const [verifierId, setVerifierId] = useState<string | null>(
+    task ? (task.verifier?.id ?? null) : (user?.id ?? null),
+  );
   const [day, setDay] = useState(dayKey(initialDue));
   const [time, setTime] = useState(timeKey(initialDue));
   const [description, setDescription] = useState(task?.description ?? '');
@@ -118,6 +123,18 @@ export function TaskForm({
     choices.people,
   );
 
+  // The verifier can't be one of the assignees (they'd verify their own work).
+  const verifierOptions = (
+    task?.verifier
+      ? withCurrent(choices.people, { value: task.verifier.id, label: task.verifier.name })
+      : choices.people
+  ).filter((p) => !assigneeIds.includes(p.value));
+
+  function pickAssignees(ids: string[]) {
+    setAssigneeIds(ids);
+    if (verifierId && ids.includes(verifierId)) setVerifierId(null);
+  }
+
   function pickTitle(value: string) {
     setMasterId(value);
     setErrors((e) => ({ ...e, title: undefined }));
@@ -147,6 +164,7 @@ export function TaskForm({
           ...(departmentId !== task.department?.id && { departmentId: departmentId ?? undefined }),
           ...(newRoom !== (task.room?.id ?? null) && { roomId: newRoom }),
           ...(!sameAssignees && { assigneeIds }),
+          ...(verifierId && verifierId !== task.verifier?.id && { verifierId }),
           ...(new Date(dueAt).getTime() !== new Date(task.dueAt).getTime() && { dueAt }),
           ...(desc !== task.description && { description: desc }),
         };
@@ -165,6 +183,7 @@ export function TaskForm({
           departmentId: departmentId ?? undefined,
           roomIds,
           assigneeIds,
+          verifierId: verifierId ?? undefined,
           description: desc,
           dueAt,
         });
@@ -288,10 +307,24 @@ export function TaskForm({
             label="Assigned to (optional)"
             values={assigneeIds}
             options={peopleOptions}
-            onChange={setAssigneeIds}
+            onChange={pickAssignees}
             placeholder="Unassigned"
             error={errors.assigneeIds}
             disabled={saving}
+            searchPlaceholder="Search name or email"
+          />
+          <SelectField
+            label="Verifier"
+            value={verifierId}
+            options={verifierOptions}
+            onChange={(v) => {
+              setVerifierId(v);
+              setErrors((e) => ({ ...e, verifierId: undefined }));
+            }}
+            placeholder="Who checks the work?"
+            error={errors.verifierId}
+            disabled={saving}
+            searchable={verifierOptions.length > 8}
             searchPlaceholder="Search name or email"
           />
           <View style={styles.pair}>

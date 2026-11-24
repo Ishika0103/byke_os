@@ -3,7 +3,7 @@ import { TASK_MASTER_TYPES } from '@byke-os/shared';
 import { baseFieldsPlugin } from '../../db/plugins/base-fields.plugin';
 
 /**
- * taskMasters (Plan 09 §7): predefined task titles. Seeded by migration only.
+ * taskmasters (Plan 09 §7): predefined task titles. Seeded by migration only.
  * Index (migration): title unique ignoring case (partial on isDeleted: false).
  */
 const taskMasterSchema = new Schema(
@@ -12,7 +12,7 @@ const taskMasterSchema = new Schema(
     type: { type: String, enum: TASK_MASTER_TYPES, required: true },
     departmentId: { type: Schema.Types.ObjectId, ref: 'Department', default: null },
   },
-  { timestamps: true, collection: 'taskMasters' },
+  { timestamps: true, collection: 'taskmasters' },
 );
 
 taskMasterSchema.plugin(baseFieldsPlugin);

@@ -6,7 +6,7 @@ import { usePagedList } from '@/hooks/use-paged-list';
 import { notificationsApi } from '../api/notifications.api';
 
 /** Unread count for the bell; reloads on focus and when the app returns to the foreground. */
-export function useUnreadCount() {
+export function useUnreadCount(refreshKey = 0) {
   const [count, setCount] = useState(0);
   const load = useCallback(() => {
     notificationsApi
@@ -16,6 +16,7 @@ export function useUnreadCount() {
   }, []);
 
   useFocusEffect(load);
+  useEffect(load, [load, refreshKey]);
   useEffect(() => {
     const sub = AppState.addEventListener('change', (next) => {
       if (next === 'active') load();

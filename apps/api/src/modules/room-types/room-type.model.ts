@@ -14,7 +14,7 @@ const roomTypeSchema = new Schema(
     pmsCode: { type: String, trim: true, uppercase: true, default: null },
     cleaningMinutes: { type: Number, min: 5, max: 240, default: null },
   },
-  { timestamps: true, collection: 'roomTypes' },
+  { timestamps: true, collection: 'roomtypes' },
 );
 
 roomTypeSchema.plugin(baseFieldsPlugin);

@@ -8,7 +8,7 @@ useTestDatabase();
 const app = createApp();
 
 describe('task notifications', () => {
-  it('tells assignees about a new task, and the creator when it is done', async () => {
+  it('tells assignees about a new task, and the verifier when it is done', async () => {
     const admin = await signedInAs(app);
     const hotelId = (
       await admin.post('/api/v1/hotels', {
@@ -19,12 +19,14 @@ describe('task notifications', () => {
       })
     ).body.data.id as string;
     const staff = await createUser({ name: 'Riya Staff', hotelIds: [hotelId] });
+    const verifier = await createUser({ name: 'Vik Verifier', hotelIds: [hotelId] });
     const dept = await getDb().collection('departments').findOne({ name: 'Housekeeping' });
 
     const created = await admin.post(`/api/v1/hotels/${hotelId}/tasks`, {
       title: 'Clean room',
       departmentId: String(dept!._id),
       assigneeIds: [String(staff.id)],
+      verifierId: verifier.id,
       dueAt: new Date(Date.now() + 3_600_000).toISOString(),
     });
     expect(created.status).toBe(201);
@@ -45,6 +47,13 @@ describe('task notifications', () => {
     const adminList = await admin.get('/api/v1/notifications');
     const kinds = adminList.body.data.items.map((n: { kind: string }) => n.kind);
     expect(kinds).toEqual(expect.arrayContaining(['task_started', 'task_done']));
+    // The verifier (not the creator) is asked to verify.
+    expect(kinds).not.toContain('task_needs_verification');
+    const vAuth = { Authorization: `Bearer ${(await login(app, verifier.email)).accessToken}` };
+    const vList = await request(app).get('/api/v1/notifications').set(vAuth);
+    expect(vList.body.data.items.map((n: { kind: string }) => n.kind)).toEqual([
+      'task_needs_verification',
+    ]);
     const after = await request(app).get('/api/v1/notifications').set(auth);
     expect(after.body.data.items).toHaveLength(1);
   });

@@ -3,47 +3,30 @@ import type { DepartmentSummary } from './department';
 import { type BaseEntity, listQuerySchema, nameSchema, objectIdSchema } from './common';
 
 /** Plan 04 §3. */
-export const TASK_STAGES = [
-  'pending',
-  'in_progress',
-  'blocked',
-  'done',
-  'verified',
-  'cancelled',
-] as const;
+export const TASK_STAGES = ['pending', 'in_progress', 'done', 'verified', 'cancelled'] as const;
 export type TaskStage = (typeof TASK_STAGES)[number];
 
 /** Stages where the work isn't finished yet (can be late, can be edited). */
-export const OPEN_STAGES: readonly TaskStage[] = ['pending', 'in_progress', 'blocked'];
+export const OPEN_STAGES: readonly TaskStage[] = ['pending', 'in_progress'];
 /** Final stages: nothing more can happen. */
 export const CLOSED_STAGES: readonly TaskStage[] = ['verified', 'cancelled'];
 
-export const TASK_ACTIONS = [
-  'start',
-  'block',
-  'unblock',
-  'done',
-  'verify',
-  'send_back',
-  'cancel',
-] as const;
+export const TASK_ACTIONS = ['start', 'done', 'verify', 'send_back', 'cancel'] as const;
 export type TaskAction = (typeof TASK_ACTIONS)[number];
 
 /** The stages each action can start from. */
 export const ACTION_FROM: Record<TaskAction, readonly TaskStage[]> = {
   start: ['pending'],
-  block: ['pending', 'in_progress'],
-  unblock: ['blocked'],
   done: ['in_progress'],
   verify: ['done'],
   send_back: ['done'],
-  cancel: ['pending', 'in_progress', 'blocked'],
+  cancel: ['pending', 'in_progress'],
 };
 
 /** Actions that need a reason in `note`. */
-export const REASON_ACTIONS: readonly TaskAction[] = ['block', 'send_back', 'cancel'];
+export const REASON_ACTIONS: readonly TaskAction[] = ['send_back', 'cancel'];
 
-/** What each log row records. */
+/** What each log row records. 'blocked' / 'unblocked' are legacy: old rows stay readable, never created. */
 export const TASK_UPDATE_KINDS = [
   'created',
   'edited',
@@ -60,10 +43,17 @@ export type TaskUpdateKind = (typeof TASK_UPDATE_KINDS)[number];
 export const MAX_TASK_PHOTOS = 3;
 export const MAX_TASK_ROOMS = 100;
 
-/** A photo returned by the upload endpoint: "/uploads/<random>.jpg". */
+/**
+ * A photo returned by the upload endpoint: "/uploads/<random>.jpg" (local disk) or
+ * "https://<media domain>/.../<random>.jpg" (S3). The API also checks it is one it issued.
+ */
 export const uploadUrlSchema = z
   .string()
-  .regex(/^\/uploads\/[a-f0-9-]{36}\.(jpg|png|webp)$/, 'Invalid photo');
+  .max(500)
+  .regex(
+    /^(\/uploads\/|https:\/\/[^\s/]+\/([^\s/]+\/)*)[a-f0-9-]{36}\.(jpg|png|webp)$/,
+    'Invalid photo',
+  );
 
 const descriptionSchema = z.string().trim().max(1000, 'At most 1000 characters');
 const noteSchema = z.string().trim().max(1000, 'At most 1000 characters');
@@ -82,9 +72,15 @@ export const createTaskSchema = z
       .max(MAX_TASK_ROOMS, `At most ${MAX_TASK_ROOMS} rooms`)
       .optional(),
     assigneeIds: z.array(objectIdSchema).max(20, 'At most 20 people').optional(),
+    /** The only person who can verify the work; not one of the assignees. */
+    verifierId: z.string({ error: 'Choose a verifier' }).pipe(objectIdSchema),
     dueAt: dueAtSchema,
   })
-  .strict();
+  .strict()
+  .refine((v) => !v.verifierId || !v.assigneeIds?.includes(v.verifierId), {
+    path: ['verifierId'],
+    message: 'The verifier cannot be one of the assignees',
+  });
 
 export const updateTaskSchema = z
   .object({
@@ -93,11 +89,16 @@ export const updateTaskSchema = z
     departmentId: objectIdSchema,
     roomId: objectIdSchema.nullable(),
     assigneeIds: z.array(objectIdSchema).max(20, 'At most 20 people'),
+    verifierId: objectIdSchema,
     dueAt: dueAtSchema,
   })
   .partial()
   .strict()
-  .refine((v) => Object.keys(v).length > 0, 'Nothing to update');
+  .refine((v) => Object.keys(v).length > 0, 'Nothing to update')
+  .refine((v) => !v.verifierId || !v.assigneeIds?.includes(v.verifierId), {
+    path: ['verifierId'],
+    message: 'The verifier cannot be one of the assignees',
+  });
 
 /** One lifecycle step. Reasons and proof are checked here so the app shows the same errors. */
 export const taskActionSchema = z
@@ -119,11 +120,11 @@ export const taskActionSchema = z
     if (v.action === 'done' && !hasNote && !hasPhotos) {
       ctx.addIssue({ code: 'custom', path: ['note'], message: 'Add a photo or a note as proof' });
     }
-    if (v.action !== 'done' && hasPhotos) {
+    if (v.action !== 'done' && v.action !== 'verify' && hasPhotos) {
       ctx.addIssue({
         code: 'custom',
         path: ['photos'],
-        message: 'Photos are only for marking done',
+        message: 'Photos are only for marking done or verifying',
       });
     }
   });
@@ -161,13 +162,14 @@ export type Task = BaseEntity & {
   groupId: string;
   department: DepartmentSummary | null;
   room: { id: string; roomNumber: string } | null;
-  /** Anyone listed can start, block and mark it done. Empty = unassigned. */
+  /** Anyone listed can start and mark it done. Empty = unassigned. */
   assignees: PersonSummary[];
   dueAt: string;
   stage: TaskStage;
-  /** Set only while blocked. */
-  blockedFrom: TaskStage | null;
-  blockedReason: string | null;
+  /** The only person who can verify (and send back) the work. */
+  verifier: PersonSummary;
+  /** True when the signed-in user is the verifier and the task is done (not stored). */
+  canVerify: boolean;
   doneBy: PersonSummary | null;
   doneAt: string | null;
   verifiedBy: PersonSummary | null;

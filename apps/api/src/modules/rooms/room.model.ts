@@ -13,6 +13,9 @@ const roomSchema = new Schema(
     floor: { type: Number, min: -5, max: 200, default: null },
     isSellable: { type: Boolean, default: true },
     notes: { type: String, trim: true, maxlength: 500, default: null },
+    // The Excel file this room was last created or changed by (Plan 11); null if added by hand.
+    importFileUrl: { type: String, default: null },
+    importFileName: { type: String, trim: true, maxlength: 255, default: null },
   },
   { timestamps: true, collection: 'rooms' },
 );

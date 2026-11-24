@@ -22,8 +22,21 @@ const envSchema = z
       .enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent'])
       .default('info'),
 
-    // Where uploaded photos are saved (Plan 04 §4). Relative paths are from the API folder.
+    // Where uploaded photos are saved (Plan 04 §4, Plan 11). 'local' = UPLOAD_DIR on the server's
+    // disk (dev and tests); 's3' = an AWS S3 bucket, served from AWS_MEDIA_DOMAIN.
+    STORAGE_DRIVER: z.enum(['local', 's3']).default('local'),
     UPLOAD_DIR: z.string().default('uploads'),
+    AWS_REGION: z.string().optional(),
+    AWS_BUCKET_NAME: z.string().optional(),
+    // Public base URL of the bucket or its CDN, e.g. https://media.example.com (no trailing slash).
+    AWS_MEDIA_DOMAIN: z
+      .string()
+      .url()
+      .transform((v) => v.replace(/\/+$/, ''))
+      .optional(),
+    // Leave both empty to use the server's IAM role instead of keys.
+    AWS_ACCESS_KEY: z.string().optional(),
+    AWS_SECRET_KEY: z.string().optional(),
 
     // Auth (Plan 01a §5, §7)
     JWT_ACCESS_SECRET: z.string().min(32, 'JWT_ACCESS_SECRET must be at least 32 characters'),
@@ -37,6 +50,25 @@ const envSchema = z
     SEED_ADMIN_EMAIL: z.string().optional(),
     SEED_ADMIN_MOBILE: z.string().optional(),
     SEED_ADMIN_PASSWORD: z.string().optional(),
+  })
+  .superRefine((e, ctx) => {
+    if (e.STORAGE_DRIVER !== 's3') return;
+    for (const name of ['AWS_REGION', 'AWS_BUCKET_NAME', 'AWS_MEDIA_DOMAIN'] as const) {
+      if (!e[name]) {
+        ctx.addIssue({
+          code: 'custom',
+          path: [name],
+          message: `${name} is required when STORAGE_DRIVER=s3`,
+        });
+      }
+    }
+    if (Boolean(e.AWS_ACCESS_KEY) !== Boolean(e.AWS_SECRET_KEY)) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['AWS_SECRET_KEY'],
+        message: 'Set both AWS_ACCESS_KEY and AWS_SECRET_KEY, or neither',
+      });
+    }
   })
   .refine((e) => e.JWT_ACCESS_SECRET !== e.JWT_REFRESH_SECRET, {
     message: 'JWT_ACCESS_SECRET and JWT_REFRESH_SECRET must be different',

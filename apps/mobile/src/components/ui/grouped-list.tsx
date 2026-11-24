@@ -1,8 +1,9 @@
 import type { ReactElement } from 'react';
-import { ActivityIndicator, FlatList, RefreshControl, StyleSheet, View } from 'react-native';
+import { FlatList, RefreshControl, StyleSheet, View } from 'react-native';
 
 import { ThemedText } from '@/components/themed-text';
 import { EmptyState } from '@/components/ui/empty-state';
+import { Loader } from '@/components/ui/loader';
 import { type IconName } from '@/components/ui/icon';
 import { SkeletonList } from '@/components/ui/skeleton';
 import { Colors, Layout, MaxContentWidth, Shadow, Spacing } from '@/constants/theme';
@@ -76,9 +77,7 @@ export function GroupedList<T>({
           <EmptyState icon={empty.icon} title={empty.title} body={empty.body} />
         )
       }
-      ListFooterComponent={
-        loadingMore ? <ActivityIndicator color={Colors.primary} style={styles.more} /> : undefined
-      }
+      ListFooterComponent={loadingMore ? <Loader style={styles.more} /> : undefined}
       onEndReached={onEndReached}
       onEndReachedThreshold={0.4}
       refreshControl={

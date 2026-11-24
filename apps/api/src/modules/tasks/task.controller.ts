@@ -19,7 +19,7 @@ export const taskController = {
   },
 
   async getById(req: Request<IdParams>, res: Response) {
-    ok(res, await taskService.getById(req.params.hotelId, req.params.id));
+    ok(res, await taskService.getById(req.params.hotelId, req.params.id, requireAuth(req).userId));
   },
 
   async create(req: Request<HotelParams>, res: Response) {

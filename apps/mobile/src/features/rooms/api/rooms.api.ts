@@ -3,6 +3,7 @@ import type {
   CreateRoomInput,
   Paginated,
   Room,
+  RoomImportLog,
   RoomImportPreview,
   RoomImportResult,
   UpdateRoomInput,
@@ -41,6 +42,8 @@ export const roomsApi = {
     apiClient.upload<RoomImportPreview>(`${base(hotelId)}/import/preview`, form),
   commitImport: (hotelId: string, form: FormData) =>
     apiClient.upload<RoomImportResult>(`${base(hotelId)}/import/commit`, form),
+  importHistory: (hotelId: string) =>
+    apiClient.get<RoomImportLog[]>(`${base(hotelId)}/import/history`),
   rejectedFile: (hotelId: string, form: FormData) =>
     apiClient.uploadForFile(`${base(hotelId)}/import/rejected`, form),
 };

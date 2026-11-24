@@ -81,7 +81,7 @@ npm run format           # Prettier
 
 - Every collection has `isActive`, `isDeleted`, `createdAt`, `updatedAt` (and `createdBy` / `updatedBy` once Plan 01 lands).
   - `isActive: false` = disabled but visible to admins. `isDeleted: true` = soft-deleted, hidden everywhere. **Never hard-delete business data.**
-- Collection names camelCase plural (`hotelUsers`, `roomTypes`). API exposes `id` (not `_id`) and no `__v`.
+- Collection names all-lowercase plural (`users`, `roomtypes`, `taskmasters`). API exposes `id` (not `_id`) and no `__v`.
 - Hotel-owned resources are nested under `/hotels/:hotelId/...` and always carry `hotelId`.
 - Unique indexes are partial on `isDeleted: false`.
 - **Every database change goes through a migration** in `apps/api/src/db/migrations/` (umzug): indexes, field renames, backfills, reference data such as system roles. See Plan 01 §0.1.
@@ -111,5 +111,8 @@ npm run format           # Prettier
 | [`docs/plans/07-excel-onboarding.md`](docs/plans/07-excel-onboarding.md): Rooms onboarding by Excel, per hotel: sample download, upload, preview, confirm; import + export of rooms (Hotel Code + Room Type Code columns)                              | ✅ done (API + app)                                                                                  |
 | [`docs/plans/08-locations.md`](docs/plans/08-locations.md): Locations collection seeded from Byke's list; hotels store `locationId`; read-only API, no screens yet                                                                                     | ✅ done (DB + API + hotel dropdown; screens postponed)                                               |
 | [`docs/plans/09-departments-task-flow.md`](docs/plans/09-departments-task-flow.md): Home / + menu cleanups, mobile number, import speed, Department master, task masters + new task flow (multi rooms, multi users), notifications, email verification | ✅ done except email verification (postponed) and push (later)                                       |
+| [`docs/plans/10-ho-overview-gap.md`](docs/plans/10-ho-overview-gap.md): what the "BYKE HO App Overview" asks for vs what is built (alerts, GM Today, HO health, roles per property, rules and feeds)                                                   | 📝 Draft, awaiting approval                                                                          |
+| [`docs/plans/11-s3-uploads.md`](docs/plans/11-s3-uploads.md): proof photos and uploaded Excel files go to AWS S3 (`STORAGE_DRIVER=s3`)                                                                                                                 | ✅ done (needs bucket setup on Render)                                                               |
+| [`docs/plans/12-consumption.md`](docs/plans/12-consumption.md): Consumption module: daily Issue / Consumption flags per property and module, synced from a hardcoded Google Sheet; module master                                                       | ✅ done (API + app); sheet needs a Property Code column                                              |
 
 Expected next: tasks engine (Plan 04) → departments & HOD routing → GM daily priority list → HO property-health dashboard.

@@ -29,6 +29,7 @@ import { DepartmentModel } from '../departments/department.model';
 import { TaskMasterModel } from '../task-masters/task-master.model';
 import { RoomModel } from '../rooms/room.model';
 import { notificationService } from '../notifications/notification.service';
+import { uploadService } from '../uploads/upload.service';
 import { UserModel } from '../users/user.model';
 import { isSuperAdminRole } from '../users/user.service';
 import { TaskModel, TaskUpdateModel } from './task.model';
@@ -46,8 +47,7 @@ type LeanTask = LeanBase & {
   assigneeIds: Id[];
   dueAt: Date;
   stage: TaskStage;
-  blockedFrom: TaskStage | null;
-  blockedReason: string | null;
+  verifierId: Id | null;
   doneBy: Id | null;
   doneAt: Date | null;
   verifiedBy: Id | null;
@@ -69,7 +69,6 @@ type LeanUpdate = {
 const STAGE_LABEL: Record<TaskStage, string> = {
   pending: 'pending',
   in_progress: 'in progress',
-  blocked: 'blocked',
   done: 'done',
   verified: 'verified',
   cancelled: 'cancelled',
@@ -77,8 +76,6 @@ const STAGE_LABEL: Record<TaskStage, string> = {
 
 const ACTION_KIND: Record<TaskAction, TaskUpdateKind> = {
   start: 'started',
-  block: 'blocked',
-  unblock: 'unblocked',
   done: 'done',
   verify: 'verified',
   send_back: 'sent_back',
@@ -137,9 +134,11 @@ async function roomsById(
   );
 }
 
-async function toDtos(tasks: LeanTask[]): Promise<Task[]> {
+async function toDtos(tasks: LeanTask[], actorId: string): Promise<Task[]> {
   const [people, rooms, departments] = await Promise.all([
-    peopleById(tasks.flatMap((t) => [...(t.assigneeIds ?? []), t.doneBy, t.verifiedBy])),
+    peopleById(
+      tasks.flatMap((t) => [...(t.assigneeIds ?? []), t.doneBy, t.verifiedBy, t.verifierId]),
+    ),
     roomsById(tasks.map((t) => t.roomId)),
     departmentsById(tasks.map((t) => t.departmentId)),
   ]);
@@ -157,8 +156,8 @@ async function toDtos(tasks: LeanTask[]): Promise<Task[]> {
     assignees: (t.assigneeIds ?? []).flatMap((id) => person(id) ?? []),
     dueAt: t.dueAt.toISOString(),
     stage: t.stage,
-    blockedFrom: t.blockedFrom ?? null,
-    blockedReason: t.blockedReason ?? null,
+    verifier: person(t.verifierId ?? null) ?? { id: '', name: 'Not set' },
+    canVerify: t.stage === 'done' && key(t.verifierId) === actorId && key(t.doneBy) !== actorId,
     doneBy: person(t.doneBy),
     doneAt: iso(t.doneAt),
     verifiedBy: person(t.verifiedBy),
@@ -199,6 +198,21 @@ async function assertAssignees(hotelId: string, userIds: string[]) {
     if (!atHotel && !(await isSuperAdminRole(String(user.roleId)))) {
       throw AppError.field('assigneeIds', 'A selected person is not added to this hotel');
     }
+  }
+}
+
+/** The verifier must be active, work at this hotel, and not be one of the assignees (Plan 12). */
+async function assertVerifier(hotelId: string, verifierId: string, assigneeIds: string[]) {
+  if (assigneeIds.includes(verifierId)) {
+    throw AppError.field('verifierId', 'The verifier can not be one of the assignees');
+  }
+  const user = await UserModel.findOne({ _id: verifierId, isActive: true })
+    .select('roleId hotelIds')
+    .lean<{ _id: Id; roleId: Id; hotelIds?: Id[] }>();
+  if (!user) throw AppError.field('verifierId', 'The verifier was not found or is inactive');
+  const atHotel = (user.hotelIds ?? []).some((h) => String(h) === hotelId);
+  if (!atHotel && !(await isSuperAdminRole(String(user.roleId)))) {
+    throw AppError.field('verifierId', 'The verifier is not added to this hotel');
   }
 }
 
@@ -258,7 +272,7 @@ export const taskService = {
         .lean<LeanTask[]>(),
       TaskModel.countDocuments(filter),
     ]);
-    return { items: await toDtos(items), page, limit, total };
+    return { items: await toDtos(items, actorId), page, limit, total };
   },
 
   async summary(hotelId: string): Promise<TaskSummary> {
@@ -277,13 +291,13 @@ export const taskService = {
     return { overdue, open: openCount, waiting, closedToday };
   },
 
-  async getById(hotelId: string, id: string): Promise<TaskDetail> {
+  async getById(hotelId: string, id: string, actorId: string): Promise<TaskDetail> {
     const task = await findOrThrow(hotelId, id);
     const updates = await TaskUpdateModel.find({ taskId: task._id })
       .sort({ createdAt: 1, _id: 1 })
       .lean<LeanUpdate[]>();
     const [[dto], people] = await Promise.all([
-      toDtos([task]),
+      toDtos([task], actorId),
       peopleById(updates.map((u) => u.createdBy)),
     ]);
     return {
@@ -313,6 +327,7 @@ export const taskService = {
       assertDepartment(input.departmentId),
       assertRooms(hotelId, roomIds),
       assertAssignees(hotelId, assigneeIds),
+      assertVerifier(hotelId, input.verifierId, assigneeIds),
     ]);
     let title = input.title;
     if (input.taskMasterId) {
@@ -334,6 +349,7 @@ export const taskService = {
         departmentId: input.departmentId,
         roomId,
         assigneeIds,
+        verifierId: input.verifierId,
         dueAt: new Date(input.dueAt),
         stage: 'pending',
         createdBy: actorId,
@@ -353,7 +369,7 @@ export const taskService = {
       });
     }
     const created = await TaskModel.find({ groupId, hotelId }).sort({ _id: 1 }).lean<LeanTask[]>();
-    return { groupId: String(groupId), tasks: await toDtos(created) };
+    return { groupId: String(groupId), tasks: await toDtos(created, actorId) };
   },
 
   /** Edits the details of an open task; each changed field is logged with before / after. */
@@ -375,6 +391,12 @@ export const taskService = {
       input.departmentId !== undefined && input.departmentId !== String(task.departmentId);
     if (roomChanged) await assertRooms(hotelId, input.roomId ? [input.roomId] : [], 'roomId');
     if (assigneesChanged) await assertAssignees(hotelId, newAssignees);
+    const oldVerifier = key(task.verifierId);
+    const verifierChanged = input.verifierId !== undefined && input.verifierId !== oldVerifier;
+    // Check the verifier whenever either side changes, so they never end up assigned to their own task.
+    if (verifierChanged || (assigneesChanged && oldVerifier)) {
+      await assertVerifier(hotelId, input.verifierId ?? oldVerifier!, newAssignees ?? oldAssignees);
+    }
     if (departmentChanged) await assertDepartment(input.departmentId!);
 
     const set: Record<string, unknown> = {};
@@ -421,7 +443,15 @@ export const taskService = {
       set.assigneeIds = newAssignees;
       changes.assignees = { from: names(oldAssignees), to: names(newAssignees) };
     }
-    if (Object.keys(set).length === 0) return this.getById(hotelId, id);
+    if (verifierChanged) {
+      const people = await peopleById([task.verifierId, new Types.ObjectId(input.verifierId)]);
+      set.verifierId = input.verifierId;
+      changes.verifier = {
+        from: oldVerifier ? (people.get(oldVerifier)?.name ?? null) : null,
+        to: people.get(input.verifierId!)?.name ?? null,
+      };
+    }
+    if (Object.keys(set).length === 0) return this.getById(hotelId, id, actorId);
 
     const updated = await TaskModel.findOneAndUpdate(
       { _id: id, hotelId, stage: { $in: OPEN_STAGES } },
@@ -440,7 +470,17 @@ export const taskService = {
         exceptUserId: actorId,
       });
     }
-    return this.getById(hotelId, id);
+    if (verifierChanged) {
+      await notificationService.notify({
+        userIds: [input.verifierId!],
+        hotelId,
+        taskId: id,
+        kind: 'task_needs_verification',
+        title: `You are the verifier: ${updated.title}`,
+        exceptUserId: actorId,
+      });
+    }
+    return this.getById(hotelId, id, actorId);
   },
 
   /**
@@ -458,6 +498,15 @@ export const taskService = {
     if (!ACTION_FROM[action].includes(task.stage)) {
       throw invalidStage(`This task is ${STAGE_LABEL[task.stage]}; that step isn't possible now`);
     }
+    if (
+      (action === 'done' || action === 'verify') &&
+      input.photos?.some((url) => !uploadService.isOwnPhoto(url))
+    ) {
+      throw AppError.field('photos', 'Upload the photo from the app first');
+    }
+    if ((action === 'verify' || action === 'send_back') && key(task.verifierId) !== actorId) {
+      throw new AppError(403, 'NOT_VERIFIER', 'Only the task verifier can do this');
+    }
     if (action === 'verify' && key(task.doneBy) === actorId) {
       throw new AppError(403, 'SELF_VERIFY', 'Someone else must verify work you marked done');
     }
@@ -468,14 +517,6 @@ export const taskService = {
     switch (action) {
       case 'start':
         to = 'in_progress';
-        break;
-      case 'block':
-        to = 'blocked';
-        set = { blockedFrom: task.stage, blockedReason: input.note };
-        break;
-      case 'unblock':
-        to = task.blockedFrom ?? 'pending';
-        set = { blockedFrom: null, blockedReason: null };
         break;
       case 'done':
         to = 'done';
@@ -491,7 +532,6 @@ export const taskService = {
         break;
       case 'cancel':
         to = 'cancelled';
-        set = { blockedFrom: null, blockedReason: null };
         break;
     }
 
@@ -507,15 +547,17 @@ export const taskService = {
       fromStage: task.stage,
       toStage: to,
       note: input.note || null,
-      photos: action === 'done' ? (input.photos ?? []).map((url) => ({ url })) : [],
+      photos:
+        action === 'done' || action === 'verify'
+          ? (input.photos ?? []).map((url) => ({ url }))
+          : [],
     });
-    return this.getById(hotelId, id);
+    return this.getById(hotelId, id, actorId);
   },
 };
 
 const ACTION_NOTIFY: Partial<Record<TaskActionInput['action'], [NotificationKind, string]>> = {
   start: ['task_started', 'Task started'],
-  block: ['task_blocked', 'Task blocked'],
   done: ['task_done', 'Task done'],
   send_back: ['task_sent_back', 'Task sent back'],
   verify: ['task_verified', 'Task verified'],
@@ -544,10 +586,10 @@ async function notifyAction(
     title: `${label}: ${after.title}`,
     exceptUserId: actorId,
   });
-  // Done work needs someone else to verify it: tell the creator.
-  if (action === 'done' && before.createdBy) {
+  // Done work needs the verifier's check.
+  if (action === 'done' && before.verifierId) {
     await notificationService.notify({
-      userIds: [String(before.createdBy)],
+      userIds: [String(before.verifierId)],
       hotelId,
       taskId,
       kind: 'task_needs_verification',

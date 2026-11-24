@@ -7,8 +7,7 @@ import { ThemedText } from '@/components/themed-text';
 import { Banner } from '@/components/ui/banner';
 import { BottomSheet } from '@/components/ui/bottom-sheet';
 import { Button } from '@/components/ui/button';
-import { ConfirmDialog } from '@/components/ui/confirm-dialog';
-import { Icon } from '@/components/ui/icon';
+import { Icon, type IconName } from '@/components/ui/icon';
 import { TextField } from '@/components/ui/text-field';
 import { Colors, Radius, Spacing } from '@/constants/theme';
 import { apiFileUrl } from '@/lib/api-client';
@@ -17,34 +16,25 @@ import { tasksApi } from '../api/tasks.api';
 
 type Props = { hotelId: string; task: TaskDetail; onChanged: (task: TaskDetail) => void };
 
-const REASON_COPY: Record<
-  'block' | 'send_back' | 'cancel',
-  { title: string; hint: string; button: string }
-> = {
-  block: {
-    title: 'Why is it blocked?',
-    hint: 'e.g. Waiting for the plumber, guest in room',
-    button: 'Mark blocked',
-  },
-  send_back: {
-    title: 'What still needs doing?',
-    hint: 'e.g. Towels missing, bathroom not cleaned',
-    button: 'Send back',
-  },
-  cancel: {
-    title: 'Why cancel this task?',
-    hint: 'e.g. Guest checked out early, raised twice',
-    button: 'Cancel task',
-  },
-};
+const REASON_COPY: Record<'send_back' | 'cancel', { title: string; hint: string; button: string }> =
+  {
+    send_back: {
+      title: 'What still needs doing?',
+      hint: 'e.g. Towels missing, bathroom not cleaned',
+      button: 'Send back',
+    },
+    cancel: {
+      title: 'Why cancel this task?',
+      hint: 'e.g. Guest checked out early, raised twice',
+      button: 'Cancel task',
+    },
+  };
 
 /** The buttons allowed for the task's stage, and the sheets they open (proof, reason, verify). */
 export function TaskActions({ hotelId, task, onChanged }: Props) {
   const [busy, setBusy] = useState<TaskAction | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [sheet, setSheet] = useState<'done' | 'block' | 'send_back' | 'cancel' | 'verify' | null>(
-    null,
-  );
+  const [sheet, setSheet] = useState<'done' | 'send_back' | 'cancel' | 'verify' | null>(null);
 
   async function run(action: TaskAction, extra: { note?: string; photos?: string[] } = {}) {
     setBusy(action);
@@ -75,10 +65,7 @@ export function TaskActions({ hotelId, task, onChanged }: Props) {
             onPress={() => run('start')}
             loading={busy === 'start'}
           />
-          <Row>
-            <Button title="Blocked" icon="block" variant="soft" onPress={() => open('block')} />
-            <Button title="Cancel" icon="close" variant="danger" onPress={() => open('cancel')} />
-          </Row>
+          <Button title="Cancel" icon="close" variant="danger" onPress={() => open('cancel')} />
         </>
       );
       break;
@@ -86,37 +73,22 @@ export function TaskActions({ hotelId, task, onChanged }: Props) {
       buttons = (
         <>
           <Button title="Mark done" icon="check" onPress={() => open('done')} />
-          <Row>
-            <Button title="Blocked" icon="block" variant="soft" onPress={() => open('block')} />
-            <Button title="Cancel" icon="close" variant="danger" onPress={() => open('cancel')} />
-          </Row>
-        </>
-      );
-      break;
-    case 'blocked':
-      buttons = (
-        <>
-          <Button
-            title="Unblock"
-            icon="play"
-            onPress={() => run('unblock')}
-            loading={busy === 'unblock'}
-          />
-          <Button
-            title="Cancel task"
-            icon="close"
-            variant="danger"
-            onPress={() => open('cancel')}
-          />
+          <Button title="Cancel" icon="close" variant="danger" onPress={() => open('cancel')} />
         </>
       );
       break;
     case 'done':
-      buttons = (
+      // Only the task's verifier can verify or send back (Plan 12).
+      buttons = task.canVerify ? (
         <>
           <Button title="Verify" icon="verified" onPress={() => open('verify')} />
           <Button title="Send back" icon="undo" variant="soft" onPress={() => open('send_back')} />
         </>
+      ) : (
+        <Banner
+          tone="info"
+          message={`Waiting for ${task.verifier?.name ?? 'the verifier'} to verify this task.`}
+        />
       );
       break;
   }
@@ -128,6 +100,11 @@ export function TaskActions({ hotelId, task, onChanged }: Props) {
 
       <ProofSheet
         visible={sheet === 'done'}
+        title="Mark done"
+        intro="Add a photo or a note as proof. The verifier will then check it."
+        confirmLabel="Mark done"
+        confirmIcon="check"
+        proofRequired
         hotelId={hotelId}
         busy={busy === 'done'}
         error={sheet === 'done' ? error : null}
@@ -135,7 +112,7 @@ export function TaskActions({ hotelId, task, onChanged }: Props) {
         onSubmit={(note, photos) => run('done', { note: note || undefined, photos })}
       />
 
-      {sheet === 'block' || sheet === 'send_back' || sheet === 'cancel' ? (
+      {sheet === 'send_back' || sheet === 'cancel' ? (
         <ReasonSheet
           key={sheet}
           copy={REASON_COPY[sheet]}
@@ -147,23 +124,20 @@ export function TaskActions({ hotelId, task, onChanged }: Props) {
         />
       ) : null}
 
-      <ConfirmDialog
+      <ProofSheet
         visible={sheet === 'verify'}
-        tone="primary"
         title="Verify this task?"
-        message={`You checked the work${task.doneBy ? ` ${task.doneBy.name} did` : ''} and it's done properly. This closes the task.`}
+        intro={`You checked the work${task.doneBy ? ` ${task.doneBy.name} did` : ''} and it's done properly. This closes the task. Photos and a note are optional.`}
         confirmLabel="Verify"
-        onConfirm={() => run('verify')}
-        onCancel={() => setSheet(null)}
+        confirmIcon="verified"
+        hotelId={hotelId}
         busy={busy === 'verify'}
         error={sheet === 'verify' ? error : null}
+        onClose={() => setSheet(null)}
+        onSubmit={(note, photos) => run('verify', { note: note || undefined, photos })}
       />
     </View>
   );
-}
-
-function Row({ children }: { children: React.ReactNode }) {
-  return <View style={styles.row}>{children}</View>;
 }
 
 function ReasonSheet({
@@ -209,9 +183,14 @@ function ReasonSheet({
 
 type Photo = { uri: string; url: string | null; failed: boolean };
 
-/** Mark done: at least one photo or a note. Photos upload as soon as they're picked. */
+/** Mark done (photo or note required) or verify (optional). Photos upload as soon as they're picked. */
 function ProofSheet({
   visible,
+  title,
+  intro,
+  confirmLabel,
+  confirmIcon,
+  proofRequired = false,
   hotelId,
   busy,
   error,
@@ -219,6 +198,11 @@ function ProofSheet({
   onSubmit,
 }: {
   visible: boolean;
+  title: string;
+  intro: string;
+  confirmLabel: string;
+  confirmIcon: IconName;
+  proofRequired?: boolean;
   hotelId: string;
   busy: boolean;
   error: string | null;
@@ -231,7 +215,7 @@ function ProofSheet({
 
   const uploading = photos.some((p) => !p.url && !p.failed);
   const uploaded = photos.flatMap((p) => (p.url ? [p.url] : []));
-  const canSubmit = !uploading && (uploaded.length > 0 || !!note.trim());
+  const canSubmit = !uploading && (!proofRequired || uploaded.length > 0 || !!note.trim());
 
   async function pick(camera: boolean) {
     setPickError(null);
@@ -261,10 +245,10 @@ function ProofSheet({
   }
 
   return (
-    <BottomSheet visible={visible} title="Mark done" onClose={onClose}>
+    <BottomSheet visible={visible} title={title} onClose={onClose}>
       <View style={styles.sheet}>
         <ThemedText type="small" themeColor="textSecondary">
-          Add a photo or a note as proof. Someone else will then verify it.
+          {intro}
         </ThemedText>
         {error || pickError ? <Banner message={(error ?? pickError) as string} /> : null}
 
@@ -313,8 +297,8 @@ function ProofSheet({
           editable={!busy}
         />
         <Button
-          title="Mark done"
-          icon="check"
+          title={confirmLabel}
+          icon={confirmIcon}
           onPress={() => onSubmit(note.trim(), uploaded)}
           disabled={!canSubmit}
           loading={busy}

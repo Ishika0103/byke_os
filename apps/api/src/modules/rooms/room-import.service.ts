@@ -1,8 +1,11 @@
 import ExcelJS from 'exceljs';
 import { Types } from 'mongoose';
-import { roomNumberSchema } from '@byke-os/shared';
+import { roomNumberSchema, type RoomImportLog } from '@byke-os/shared';
 import { AppError } from '../../utils/app-error';
+import { logger } from '../../config/logger';
 import { HotelModel } from '../hotels/hotel.model';
+import { uploadService } from '../uploads/upload.service';
+import { UserModel } from '../users/user.model';
 import { RoomTypeModel } from '../room-types/room-type.model';
 import { NATURAL_ORDER, RoomModel } from './room.model';
 
@@ -295,7 +298,13 @@ export const roomImportService = {
   },
 
   /** Checks the file again and saves every valid row, one by one. */
-  async commit(hotelId: string, buffer: Buffer | undefined, actorId: string, canEdit: boolean) {
+  async commit(
+    hotelId: string,
+    buffer: Buffer | undefined,
+    actorId: string,
+    canEdit: boolean,
+    fileName = 'rooms.xlsx',
+  ) {
     const { rows } = await analyse(hotelId, buffer, canEdit);
     const types = await RoomTypeModel.find({ hotelId })
       .select('code')
@@ -307,6 +316,18 @@ export const roomImportService = {
       ]),
     );
 
+    // Keep the uploaded file first, so every room it creates or changes carries its link. A
+    // storage problem is logged and the import still goes ahead without a link.
+    let file: { importFileUrl: string; importFileName: string } | null = null;
+    if (rows.some((r) => r.action === 'create' || r.action === 'update')) {
+      try {
+        const saved = await uploadService.saveImportFile(hotelId, buffer!);
+        if (saved.url) file = { importFileUrl: saved.url, importFileName: fileName.slice(0, 255) };
+      } catch (err) {
+        logger.error({ err, hotelId }, 'Could not store the imported Excel file');
+      }
+    }
+
     const toCreate: { row: ImportRow; doc: Record<string, unknown> }[] = [];
     const toUpdate: { row: ImportRow; roomNumber: string; roomTypeId: Types.ObjectId }[] = [];
     for (const r of rows) {
@@ -316,7 +337,14 @@ export const roomImportService = {
       if (r.action === 'create') {
         toCreate.push({
           row: r,
-          doc: { hotelId, roomNumber, roomTypeId, createdBy: actorId, updatedBy: actorId },
+          doc: {
+            hotelId,
+            roomNumber,
+            roomTypeId,
+            ...file,
+            createdBy: actorId,
+            updatedBy: actorId,
+          },
         });
       } else {
         toUpdate.push({ row: r, roomNumber, roomTypeId });
@@ -353,7 +381,7 @@ export const roomImportService = {
         toUpdate.map((u) => ({
           updateOne: {
             filter: { hotelId, roomNumber: u.roomNumber },
-            update: { roomTypeId: u.roomTypeId, updatedBy: actorId },
+            update: { roomTypeId: u.roomTypeId, ...file, updatedBy: actorId },
           },
         })),
       );
@@ -368,6 +396,54 @@ export const roomImportService = {
       rejected: counts.rejected,
       rejectedRows: rows.filter((r) => r.action === 'rejected'),
     };
+  },
+
+  /**
+   * Excel files used for this hotel's rooms, newest first, with the number of rooms each one
+   * currently stands behind. Built from the rooms themselves (`importFileUrl`), no extra collection.
+   */
+  async history(hotelId: string): Promise<RoomImportLog[]> {
+    const groups = await RoomModel.aggregate<{
+      _id: string;
+      fileName: string;
+      rooms: number;
+      importedAt: Date;
+      importedBy: Types.ObjectId | null;
+    }>([
+      {
+        $match: {
+          hotelId: new Types.ObjectId(hotelId),
+          isDeleted: false,
+          importFileUrl: { $ne: null },
+        },
+      },
+      { $sort: { updatedAt: -1 } },
+      {
+        $group: {
+          _id: '$importFileUrl',
+          fileName: { $first: '$importFileName' },
+          rooms: { $sum: 1 },
+          importedAt: { $first: '$updatedAt' },
+          importedBy: { $first: '$updatedBy' },
+        },
+      },
+      { $sort: { importedAt: -1 } },
+      { $limit: 20 },
+    ]);
+    const ids = [...new Set(groups.map((g) => String(g.importedBy ?? '')).filter(Boolean))];
+    const users = await UserModel.find({ _id: { $in: ids } })
+      .select('name')
+      .lean<{ _id: Types.ObjectId; name: string }[]>();
+    const name = new Map(users.map((u) => [String(u._id), u.name]));
+    return groups.map((g) => ({
+      fileUrl: g._id,
+      fileName: g.fileName ?? 'rooms.xlsx',
+      rooms: g.rooms,
+      importedAt: g.importedAt.toISOString(),
+      importedBy: g.importedBy
+        ? { id: String(g.importedBy), name: name.get(String(g.importedBy)) ?? 'Unknown' }
+        : null,
+    }));
   },
 
   /** The rejected rows with a Reason column, to fix and upload again. */

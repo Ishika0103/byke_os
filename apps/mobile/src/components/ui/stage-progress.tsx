@@ -5,13 +5,12 @@ import { Icon } from '@/components/ui/icon';
 import { Colors, FontFamily } from '@/constants/theme';
 
 const TONE = {
-  warning: { color: '#F0A020', text: '#9A5B00' },
   danger: { color: '#E5484D', text: Colors.error },
 };
 
 /**
  * Generic progress bar for anything that moves through steps (tasks now, other records later).
- * Steps up to `current` are filled; `flag` marks the current step as Blocked / Cancelled.
+ * Steps up to `current` are filled; `flag` marks the current step as Cancelled.
  */
 export function StageProgress({
   steps,
@@ -48,13 +47,7 @@ export function StageProgress({
                 ]}
               >
                 {reached && !isCurrent ? <Icon name="check" size={14} color="#FFFFFF" /> : null}
-                {isCurrent && flag ? (
-                  <Icon
-                    name={flag.tone === 'danger' ? 'close' : 'warning'}
-                    size={13}
-                    color="#FFFFFF"
-                  />
-                ) : null}
+                {isCurrent && flag ? <Icon name="close" size={13} color="#FFFFFF" /> : null}
                 {isCurrent && !flag ? <View style={styles.inner} /> : null}
               </View>
             </Fragment>

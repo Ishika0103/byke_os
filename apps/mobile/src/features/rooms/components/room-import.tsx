@@ -1,6 +1,6 @@
-import { useState, type ReactNode } from 'react';
-import { StyleSheet, View } from 'react-native';
-import type { RoomImportPreview, RoomImportResult } from '@byke-os/shared';
+import { useCallback, useEffect, useState, type ReactNode } from 'react';
+import { Linking, StyleSheet, View } from 'react-native';
+import type { RoomImportLog, RoomImportPreview, RoomImportResult } from '@byke-os/shared';
 
 import { ThemedText } from '@/components/themed-text';
 import { Banner } from '@/components/ui/banner';
@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Can } from '@/features/auth';
 import { Screen } from '@/components/ui/screen';
+import { LoaderOverlay } from '@/components/ui/loader';
 import { SectionLabel } from '@/components/ui/section-label';
 import { SelectField } from '@/components/ui/select-field';
 import { Colors, FontFamily, Spacing } from '@/constants/theme';
@@ -18,6 +19,14 @@ import { roomsApi } from '../api/rooms.api';
 
 const ANY = 'any';
 
+const BUSY_TEXT: Record<string, { label: string; hint?: string }> = {
+  sample: { label: 'Preparing the sample file…' },
+  choose: { label: 'Reading and checking your file…', hint: 'Large files can take a few seconds.' },
+  confirm: { label: 'Importing rooms…', hint: 'Please keep this screen open.' },
+  export: { label: 'Preparing the export…' },
+  rejected: { label: 'Preparing the rejected rows…' },
+};
+
 /** Plan 07: download the sample, upload the filled file, check the preview, confirm. */
 export function RoomImport({ hotelId, header }: { hotelId: string; header: ReactNode }) {
   const types = useRoomTypeOptions(hotelId, true);
@@ -27,6 +36,15 @@ export function RoomImport({ hotelId, header }: { hotelId: string; header: React
   const [result, setResult] = useState<RoomImportResult | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [history, setHistory] = useState<RoomImportLog[]>([]);
+
+  const loadHistory = useCallback(() => {
+    roomsApi
+      .importHistory(hotelId)
+      .then(setHistory)
+      .catch(() => setHistory([]));
+  }, [hotelId]);
+  useEffect(loadHistory, [loadHistory]);
 
   async function run(label: string, work: () => Promise<void>) {
     setBusy(label);
@@ -64,6 +82,7 @@ export function RoomImport({ hotelId, header }: { hotelId: string; header: React
       if (!picked) return;
       setResult(await roomsApi.commitImport(hotelId, picked.toForm()));
       setPreview(null);
+      loadHistory();
     });
 
   const exportRooms = () =>
@@ -99,6 +118,11 @@ export function RoomImport({ hotelId, header }: { hotelId: string; header: React
         ) : undefined
       }
     >
+      <LoaderOverlay
+        visible={!!busy}
+        label={BUSY_TEXT[busy ?? '']?.label ?? 'Working…'}
+        hint={BUSY_TEXT[busy ?? '']?.hint}
+      />
       {error ? <Banner message={error} /> : null}
 
       <SectionLabel title="1. Download the sample" />
@@ -195,6 +219,40 @@ export function RoomImport({ hotelId, header }: { hotelId: string; header: React
         </Card>
       </Can>
 
+      {history.length > 0 ? (
+        <>
+          <SectionLabel title="Previous imports" />
+          <Card>
+            {history.map((h) => (
+              <View key={h.fileUrl} style={styles.historyRow}>
+                <View style={styles.historyText}>
+                  <ThemedText style={styles.listTitle} numberOfLines={1}>
+                    {h.fileName}
+                  </ThemedText>
+                  <ThemedText type="small" themeColor="textSecondary">
+                    {new Date(h.importedAt).toLocaleString('en-IN', {
+                      day: 'numeric',
+                      month: 'short',
+                      hour: 'numeric',
+                      minute: '2-digit',
+                    })}
+                    {h.importedBy ? ` · ${h.importedBy.name}` : ''} · {h.rooms} room
+                    {h.rooms === 1 ? '' : 's'}
+                  </ThemedText>
+                </View>
+                <Button
+                  title="Open"
+                  icon="download"
+                  variant="soft"
+                  compact
+                  onPress={() => Linking.openURL(h.fileUrl)}
+                />
+              </View>
+            ))}
+          </Card>
+        </>
+      ) : null}
+
       {result ? (
         <Card>
           <ThemedText style={styles.listTitle}>Import finished</ThemedText>
@@ -228,6 +286,8 @@ function Tile({ label, value, bad }: { label: string; value: number; bad?: boole
 
 const styles = StyleSheet.create({
   tiles: { flexDirection: 'row', gap: Spacing.two },
+  historyRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.two },
+  historyText: { flex: 1, gap: 2 },
   tile: {
     flex: 1,
     backgroundColor: Colors.background,

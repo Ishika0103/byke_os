@@ -7,8 +7,8 @@ import { Colors, FontFamily } from '@/constants/theme';
 import { useUnreadCount } from '../hooks/use-notifications';
 
 /** Bell button for the Home header with an unread-count badge. */
-export function NotificationBell() {
-  const count = useUnreadCount();
+export function NotificationBell({ refreshKey = 0 }: { refreshKey?: number }) {
+  const count = useUnreadCount(refreshKey);
   return (
     <Pressable
       accessibilityRole="button"

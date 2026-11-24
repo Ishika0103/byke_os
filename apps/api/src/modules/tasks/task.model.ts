@@ -17,10 +17,9 @@ const taskSchema = new Schema(
     departmentId: { type: Schema.Types.ObjectId, ref: 'Department', required: true },
     roomId: { type: Schema.Types.ObjectId, ref: 'Room', default: null },
     assigneeIds: { type: [{ type: Schema.Types.ObjectId, ref: 'User' }], default: [] },
+    verifierId: { type: Schema.Types.ObjectId, ref: 'User', default: null },
     dueAt: { type: Date, required: true },
     stage: { type: String, enum: TASK_STAGES, required: true, default: 'pending' },
-    blockedFrom: { type: String, enum: [...TASK_STAGES, null], default: null },
-    blockedReason: { type: String, default: null },
     doneBy: { type: Schema.Types.ObjectId, ref: 'User', default: null },
     doneAt: { type: Date, default: null },
     verifiedBy: { type: Schema.Types.ObjectId, ref: 'User', default: null },
@@ -34,7 +33,7 @@ taskSchema.plugin(baseFieldsPlugin);
 export const TaskModel = model('Task', taskSchema);
 
 /**
- * taskUpdates (Plan 04 §2.2): the log. Rows are only ever added, never edited or deleted.
+ * taskupdates (Plan 04 §2.2): the log. Rows are only ever added, never edited or deleted.
  * isActive / isDeleted come from the base plugin for the collection convention and never change.
  * Index (migration): { taskId, createdAt }.
  */
@@ -49,7 +48,7 @@ const taskUpdateSchema = new Schema(
     photos: { type: [{ url: String, _id: false }], default: [], immutable: true },
     changes: { type: Schema.Types.Mixed, default: null, immutable: true },
   },
-  { timestamps: { createdAt: true, updatedAt: false }, collection: 'taskUpdates' },
+  { timestamps: { createdAt: true, updatedAt: false }, collection: 'taskupdates' },
 );
 
 taskUpdateSchema.plugin(baseFieldsPlugin);

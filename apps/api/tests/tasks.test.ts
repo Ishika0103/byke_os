@@ -20,7 +20,11 @@ async function dept(name: string): Promise<string> {
 
 const PHOTO = '/uploads/0b6f8a52-4c1e-4f7a-9a51-6c2d9f1e2a3b.jpg';
 
+/** The default verifier of tasks made by makeTask; set by setup() for each test. */
+let supervisor: Awaited<ReturnType<typeof secondUser>>;
+
 async function setup() {
+  supervisor = await secondUser();
   const admin = await signedInAs(app);
   const hotel = await admin.post('/api/v1/hotels', {
     name: 'Astara',
@@ -43,6 +47,7 @@ async function makeTask(admin: Admin, base: string, body: object = {}) {
     title: 'Clean room 101',
     departmentId: await dept('Housekeeping'),
     dueAt: inHours(2),
+    verifierId: supervisor.user.id,
     ...body,
   });
   expect(res.status).toBe(201);
@@ -57,6 +62,7 @@ async function secondUser() {
   return {
     user,
     post: (url: string, body?: object) => request(app).post(url).set(auth).send(body),
+    get: (url: string) => request(app).get(url).set(auth),
   };
 }
 
@@ -69,6 +75,7 @@ describe('tasks', () => {
       departmentId: await dept('Housekeeping'),
       roomIds: [roomId],
       assigneeIds: [admin.user.id, priya.id],
+      verifierId: supervisor.user.id,
       dueAt: inHours(2),
     });
     expect(res.status).toBe(201);
@@ -85,6 +92,8 @@ describe('tasks', () => {
         { id: admin.user.id, name: 'Test User' },
         { id: priya.id, name: 'Priya Supervisor' },
       ],
+      verifier: { id: supervisor.user.id, name: 'Priya Supervisor' },
+      canVerify: false,
       stage: 'pending',
       isOverdue: false,
     });
@@ -106,6 +115,7 @@ describe('tasks', () => {
       departmentId: await dept('Housekeeping'),
       roomIds: [roomId, room2.body.data.id, roomId],
       assigneeIds: [admin.user.id],
+      verifierId: supervisor.user.id,
       description: 'Evening',
       dueAt: inHours(3),
     });
@@ -132,6 +142,7 @@ describe('tasks', () => {
     const none = await admin.post(base, {
       title: 'Check the lobby',
       departmentId: await dept('Front Office'),
+      verifierId: supervisor.user.id,
       dueAt: inHours(1),
     });
     expect(none.body.data.tasks).toHaveLength(1);
@@ -149,6 +160,7 @@ describe('tasks', () => {
       title: 'ignored text',
       taskMasterId: cleaning.id,
       departmentId: await dept('Housekeeping'),
+      verifierId: supervisor.user.id,
       dueAt: inHours(2),
     });
     expect(picked.body.data.tasks[0]).toMatchObject({
@@ -158,6 +170,7 @@ describe('tasks', () => {
     const other = await admin.post(base, {
       title: 'Polish the lobby brass',
       departmentId: await dept('Maintenance'),
+      verifierId: supervisor.user.id,
       dueAt: inHours(2),
     });
     expect(other.body.data.tasks[0]).toMatchObject({
@@ -168,6 +181,7 @@ describe('tasks', () => {
       title: 'Something',
       taskMasterId: '0'.repeat(24),
       departmentId: await dept('Housekeeping'),
+      verifierId: supervisor.user.id,
       dueAt: inHours(2),
     });
     expect(bad.status).toBe(400);
@@ -197,7 +211,7 @@ describe('tasks', () => {
     const bad = await admin.post(base, { title: 'x', departmentId: 'kitchen', dueAt: 'soon' });
     expect(bad.status).toBe(400);
     expect(Object.keys(bad.body.error.details)).toEqual(
-      expect.arrayContaining(['title', 'departmentId', 'dueAt']),
+      expect.arrayContaining(['title', 'departmentId', 'dueAt', 'verifierId']),
     );
     const housekeeping = await dept('Housekeeping');
 
@@ -218,6 +232,7 @@ describe('tasks', () => {
       title: 'Fix AC',
       departmentId: housekeeping,
       dueAt: inHours(1),
+      verifierId: supervisor.user.id,
       roomIds: [foreignRoom.body.data.id],
     });
     expect(res.status).toBe(400);
@@ -228,6 +243,7 @@ describe('tasks', () => {
       title: 'Fix AC',
       departmentId: housekeeping,
       dueAt: inHours(1),
+      verifierId: supervisor.user.id,
       assigneeIds: [admin.user.id, inactive.id],
     });
     expect(res2.body.error.details.assigneeIds).toBeDefined();
@@ -235,9 +251,38 @@ describe('tasks', () => {
     const res3 = await admin.post(base, {
       title: 'Fix AC',
       departmentId: '0'.repeat(24),
+      verifierId: supervisor.user.id,
       dueAt: inHours(1),
     });
     expect(res3.body.error.details.departmentId).toBeDefined();
+  });
+
+  it('validates the verifier: required, not an assignee, active and at the hotel', async () => {
+    const { admin, hotelId, base } = await setup();
+    const body = { title: 'Fix AC', departmentId: await dept('Housekeeping'), dueAt: inHours(1) };
+    const none = await admin.post(base, body);
+    expect(none.status).toBe(400);
+    expect(none.body.error.details.verifierId).toBeDefined();
+
+    const assignee = await admin.post(base, {
+      ...body,
+      assigneeIds: [supervisor.user.id],
+      verifierId: supervisor.user.id,
+    });
+    expect(assignee.status).toBe(400);
+    expect(assignee.body.error.details.verifierId).toBeDefined();
+
+    const inactive = await createUser({ isActive: false });
+    const off = await admin.post(base, { ...body, verifierId: inactive.id });
+    expect(off.body.error.details.verifierId).toBeDefined();
+
+    const elsewhere = await createUser({ role: 'STAFF', hotelIds: [] });
+    const foreign = await admin.post(base, { ...body, verifierId: elsewhere.id });
+    expect(foreign.status).toBe(400);
+    expect(foreign.body.error.details.verifierId).toBeDefined();
+
+    const local = await createUser({ role: 'STAFF', hotelIds: [hotelId] });
+    expect((await admin.post(base, { ...body, verifierId: local.id })).status).toBe(201);
   });
 
   it('runs the full lifecycle with proof and verification by someone else', async () => {
@@ -254,12 +299,17 @@ describe('tasks', () => {
     const done = await act({ action: 'done', photos: [PHOTO], note: 'Bathroom fixed' });
     expect(done.body.data).toMatchObject({ stage: 'done', doneBy: { id: admin.user.id } });
 
-    const self = await act({ action: 'verify' });
-    expect(self.status).toBe(403);
-    expect(self.body.error.code).toBe('SELF_VERIFY');
+    const notYours = await act({ action: 'verify' });
+    expect(notYours.status).toBe(403);
+    expect(notYours.body.error.code).toBe('NOT_VERIFIER');
 
-    const supervisor = await secondUser();
-    const verified = await supervisor.post(`${base}/${id}/actions`, { action: 'verify' });
+    expect((await supervisor.get(`${base}/${id}`)).body.data.canVerify).toBe(true);
+    expect((await admin.get(`${base}/${id}`)).body.data.canVerify).toBe(false);
+    const verified = await supervisor.post(`${base}/${id}/actions`, {
+      action: 'verify',
+      photos: [PHOTO],
+      note: 'Looks good',
+    });
     expect(verified.status).toBe(200);
     expect(verified.body.data).toMatchObject({
       stage: 'verified',
@@ -277,6 +327,11 @@ describe('tasks', () => {
       note: 'Bathroom fixed',
       photos: [{ url: PHOTO }],
     });
+    expect(verified.body.data.updates[3]).toMatchObject({
+      kind: 'verified',
+      note: 'Looks good',
+      photos: [{ url: PHOTO }],
+    });
 
     // Verified is final.
     const again = await act({ action: 'start' });
@@ -291,26 +346,19 @@ describe('tasks', () => {
     expect((await act({ action: 'done', note: 'x' })).status).toBe(409);
     expect((await act({ action: 'verify' })).status).toBe(409);
     expect((await act({ action: 'start', photos: [PHOTO] })).status).toBe(400);
-    expect((await act({ action: 'block' })).body.error.details.note).toBeDefined();
+    expect((await act({ action: 'block', note: 'x' })).status).toBe(400);
   });
 
-  it('send back clears the done fields; block returns to the earlier stage', async () => {
+  it('send back is for the verifier only and clears the done fields', async () => {
     const { admin, base } = await setup();
     const { id } = await makeTask(admin, base);
     const act = (body: object) => admin.post(`${base}/${id}/actions`, body);
     await act({ action: 'start' });
 
-    const blocked = await act({ action: 'block', note: 'Waiting for plumber' });
-    expect(blocked.body.data).toMatchObject({
-      stage: 'blocked',
-      blockedFrom: 'in_progress',
-      blockedReason: 'Waiting for plumber',
-    });
-    const unblocked = await act({ action: 'unblock' });
-    expect(unblocked.body.data).toMatchObject({ stage: 'in_progress', blockedReason: null });
-
     await act({ action: 'done', note: 'Done' });
-    const supervisor = await secondUser();
+    const denied = await act({ action: 'send_back', note: 'Not mine to reject' });
+    expect(denied.status).toBe(403);
+    expect(denied.body.error.code).toBe('NOT_VERIFIER');
     const back = await supervisor.post(`${base}/${id}/actions`, {
       action: 'send_back',
       note: 'Towels missing',
@@ -352,6 +400,35 @@ describe('tasks', () => {
     expect(same.body.data.updates).toHaveLength(2);
   });
 
+  it('changes the verifier on edit (not to an assignee) and tells the new verifier', async () => {
+    const { admin, base } = await setup();
+    const { id } = await makeTask(admin, base, { assigneeIds: [admin.user.id] });
+    const next = await createUser({ name: 'Neha Manager' });
+
+    const bad = await admin.patch(`${base}/${id}`, { verifierId: admin.user.id });
+    expect(bad.status).toBe(400);
+    expect(bad.body.error.details.verifierId).toBeDefined();
+
+    const res = await admin.patch(`${base}/${id}`, { verifierId: next.id });
+    expect(res.status).toBe(200);
+    expect(res.body.data.verifier).toMatchObject({ id: next.id, name: 'Neha Manager' });
+    expect(res.body.data.updates.at(-1).changes).toEqual({
+      verifier: { from: 'Priya Supervisor', to: 'Neha Manager' },
+    });
+    const { accessToken } = await login(app, next.email);
+    const inbox = await request(app)
+      .get('/api/v1/notifications')
+      .set({ Authorization: `Bearer ${accessToken}` });
+    expect(inbox.body.data.items.map((n: { kind: string }) => n.kind)).toEqual([
+      'task_needs_verification',
+    ]);
+
+    // Moving an assignee onto the verifier is refused too.
+    const clash = await admin.patch(`${base}/${id}`, { assigneeIds: [next.id] });
+    expect(clash.status).toBe(400);
+    expect(clash.body.error.details.verifierId).toBeDefined();
+  });
+
   it('lists by view, "me", room and overdue (late first) and counts the summary', async () => {
     const { admin, roomId, base } = await setup();
     const late = await makeTask(admin, base, { title: 'Late one', dueAt: inHours(-1) });
@@ -368,7 +445,7 @@ describe('tasks', () => {
     const closed = await makeTask(admin, base, { title: 'Verified' });
     await admin.post(`${base}/${closed.id}/actions`, { action: 'start' });
     await admin.post(`${base}/${closed.id}/actions`, { action: 'done', note: 'ok' });
-    await (await secondUser()).post(`${base}/${closed.id}/actions`, { action: 'verify' });
+    await supervisor.post(`${base}/${closed.id}/actions`, { action: 'verify' });
 
     const open = await admin.get(base);
     expect(open.body.data.items.map((t: { title: string }) => t.title)).toEqual([

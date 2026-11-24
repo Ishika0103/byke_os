@@ -58,11 +58,16 @@ export function useTaskDetail(hotelId: string, id: string) {
 
   useFocusEffect(load);
 
-  return { task, setTask, error, retry: load };
+  const reload = useCallback(
+    () => tasksApi.get(hotelId, id).then((data) => setTask(data)),
+    [hotelId, id],
+  );
+
+  return { task, setTask, error, retry: load, reload };
 }
 
 /** Counts for Home; reloads on focus. */
-export function useTaskSummary(hotelId: string | null | undefined) {
+export function useTaskSummary(hotelId: string | null | undefined, refreshKey = 0) {
   const [summary, setSummary] = useState<TaskSummary | null>(null);
 
   useFocusEffect(
@@ -76,7 +81,9 @@ export function useTaskSummary(hotelId: string | null | undefined) {
       return () => {
         cancelled = true;
       };
-    }, [hotelId]),
+      // refreshKey re-runs this when the user pulls down on Home.
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [hotelId, refreshKey]),
   );
 
   return summary;

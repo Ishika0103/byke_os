@@ -1,7 +1,8 @@
-import { ActivityIndicator, Pressable, StyleSheet, type PressableProps } from 'react-native';
+import { Pressable, StyleSheet, type PressableProps } from 'react-native';
 
 import { ThemedText } from '@/components/themed-text';
 import { Icon, type IconName } from '@/components/ui/icon';
+import { Loader } from '@/components/ui/loader';
 import { Colors, FontFamily, Layout, Radius, Spacing } from '@/constants/theme';
 
 /**
@@ -64,7 +65,7 @@ export function Button({
       {...rest}
     >
       {loading ? (
-        <ActivityIndicator color={look.fg} />
+        <Loader color={look.fg} />
       ) : (
         <>
           {icon ? <Icon name={icon} size={20} color={look.fg} /> : null}

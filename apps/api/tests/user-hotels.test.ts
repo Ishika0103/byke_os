@@ -155,6 +155,7 @@ describe('user ↔ hotel mapping (Plan 05)', () => {
     const [hotel, other] = [await createHotel(), await createHotel()];
     const here = await createUser({ role: 'STAFF', hotelIds: [hotel] });
     const elsewhere = await createUser({ role: 'STAFF', hotelIds: [other] });
+    const verifier = await createUser({ role: 'STAFF', hotelIds: [hotel] });
     const base = `/api/v1/hotels/${hotel}/tasks`;
     const housekeeping = await departmentId();
     const task = (assigneeId: string) =>
@@ -163,6 +164,7 @@ describe('user ↔ hotel mapping (Plan 05)', () => {
         departmentId: housekeeping,
         dueAt: inHours(2),
         assigneeIds: [assigneeId],
+        verifierId: verifier.id,
       });
 
     expect((await task(here.id)).status).toBe(201);

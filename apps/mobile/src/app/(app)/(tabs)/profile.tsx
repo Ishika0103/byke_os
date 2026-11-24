@@ -15,20 +15,25 @@ import { SectionLabel } from '@/components/ui/section-label';
 import { Colors, FontFamily, Radius, Spacing } from '@/constants/theme';
 import { useAuth, useIsSuperAdmin, usePermission } from '@/features/auth';
 import { useHotel } from '@/features/hotels';
+import { usePullRefresh } from '@/hooks/use-pull-refresh';
 
 export default function ProfileScreen() {
-  const { user, logout } = useAuth();
+  const { user, logout, refreshUser } = useAuth();
+  const { refreshing, onRefresh } = usePullRefresh(refreshUser);
   const { hotel } = useHotel();
   const [confirmOpen, setConfirmOpen] = useState(false);
   const canHotels = usePermission('view-hotel');
   const canUsers = usePermission('view-user');
   const canDepartments = usePermission('view-department');
+  const canConsumption = usePermission('view-consumption');
   const isSuperAdmin = useIsSuperAdmin();
   if (!user) return null;
 
   return (
     <Screen
       tabs
+      onRefresh={onRefresh}
+      refreshing={refreshing}
       header={
         <PageHeader back title="Settings">
           <View style={styles.me}>
@@ -77,10 +82,10 @@ export default function ProfileScreen() {
         />
       </CardList>
 
-      {canHotels || canUsers || canDepartments || isSuperAdmin ? (
+      {canHotels || canUsers || canDepartments || canConsumption || isSuperAdmin ? (
         <SectionLabel title="Administration" />
       ) : null}
-      {canHotels || canUsers || canDepartments || isSuperAdmin ? (
+      {canHotels || canUsers || canDepartments || canConsumption || isSuperAdmin ? (
         <CardList>
           {canHotels ? (
             <ListRow
@@ -104,6 +109,14 @@ export default function ProfileScreen() {
               title="Departments"
               subtitle="Housekeeping, Front Office and other teams"
               onPress={() => router.push('/departments')}
+            />
+          ) : null}
+          {canConsumption ? (
+            <ListRow
+              icon="chart"
+              title="Consumption"
+              subtitle="Daily issue and consumption marking per property"
+              onPress={() => router.push('/consumption/index')}
             />
           ) : null}
           {isSuperAdmin ? (

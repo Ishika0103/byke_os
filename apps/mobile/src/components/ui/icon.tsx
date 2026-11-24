@@ -46,6 +46,8 @@ const ICONS = {
   upload: { ios: 'arrow.up.circle', md: 'upload_file' },
   bell: { ios: 'bell', md: 'notifications' },
   clock: { ios: 'clock', md: 'schedule' },
+  sync: { ios: 'arrow.triangle.2.circlepath', md: 'sync' },
+  chart: { ios: 'chart.bar', md: 'bar_chart' },
 } as const satisfies Record<string, { ios: SFSymbol; md: string }>;
 
 export type IconName = keyof typeof ICONS;

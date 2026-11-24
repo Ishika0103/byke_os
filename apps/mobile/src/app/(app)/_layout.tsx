@@ -32,6 +32,9 @@ export default function AppLayout() {
         <Stack.Screen name="tasks/new" />
         <Stack.Screen name="tasks/[id]/index" />
         <Stack.Screen name="tasks/[id]/edit" />
+        <Stack.Screen name="consumption/index" />
+        <Stack.Screen name="consumption/sync" />
+        <Stack.Screen name="consumption/module" />
         <Stack.Screen name="notifications" />
         <Stack.Screen name="change-password" />
       </Stack>

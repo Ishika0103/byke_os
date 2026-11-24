@@ -40,6 +40,7 @@ roomRouter.param('id', validateObjectIdParam);
 
 // Excel import / export (Plan 07). Before '/:id' so these aren't read as room ids.
 roomRouter.get('/import/sample', authorize('add-room'), roomController.importSample);
+roomRouter.get('/import/history', authorize('add-room'), roomController.importHistory);
 roomRouter.post('/import/preview', authorize('add-room'), parseExcel, roomController.importPreview);
 roomRouter.post('/import/commit', authorize('add-room'), parseExcel, roomController.importCommit);
 roomRouter.post(

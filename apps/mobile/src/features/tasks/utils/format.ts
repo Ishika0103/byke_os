@@ -5,7 +5,6 @@ import { Colors } from '@/constants/theme';
 export const STAGE_LABEL: Record<TaskStage, string> = {
   pending: 'Pending',
   in_progress: 'In progress',
-  blocked: 'Blocked',
   done: 'Waiting to verify',
   verified: 'Verified',
   cancelled: 'Cancelled',
@@ -15,7 +14,6 @@ export const STAGE_LABEL: Record<TaskStage, string> = {
 export const STAGE_LOOK: Record<TaskStage, { bg: string; fg: string; dot: string }> = {
   pending: { bg: '#EEF2F2', fg: '#4B5554', dot: '#8C9493' },
   in_progress: { bg: Colors.tile, fg: Colors.primaryPressed, dot: Colors.primary },
-  blocked: { bg: '#FFF4E0', fg: '#9A5B00', dot: '#F0A020' },
   done: { bg: '#EAF0FF', fg: '#2F55B5', dot: '#4C7BF0' },
   verified: { bg: '#E7F6EC', fg: Colors.success, dot: '#2EA44F' },
   cancelled: { bg: Colors.errorBackground, fg: Colors.error, dot: '#E5484D' },
@@ -25,9 +23,8 @@ export const STAGE_LOOK: Record<TaskStage, { bg: string; fg: string; dot: string
 export const PROGRESS_STEPS = ['Pending', 'In progress', 'Done', 'Verified'];
 
 /** How far along the progress bar the task is (index of the last step reached). */
-export function progressIndex(task: Pick<Task, 'stage' | 'blockedFrom'>): number {
-  const stage = task.stage === 'blocked' ? (task.blockedFrom ?? 'pending') : task.stage;
-  return { pending: 0, in_progress: 1, blocked: 0, done: 2, verified: 3, cancelled: 0 }[stage];
+export function progressIndex(task: Pick<Task, 'stage'>): number {
+  return { pending: 0, in_progress: 1, done: 2, verified: 3, cancelled: 0 }[task.stage];
 }
 
 const pad = (n: number) => String(n).padStart(2, '0');
@@ -75,7 +72,7 @@ function span(ms: number): string {
 export function dueText(task: Pick<Task, 'dueAt' | 'stage' | 'isOverdue'>, now = new Date()) {
   const due = new Date(task.dueAt);
   if (task.isOverdue) return { text: `${span(now.getTime() - due.getTime())} late`, late: true };
-  if (task.stage === 'pending' || task.stage === 'in_progress' || task.stage === 'blocked') {
+  if (task.stage === 'pending' || task.stage === 'in_progress') {
     const ms = due.getTime() - now.getTime();
     return {
       text: ms < 6 * 3_600_000 ? `Due in ${span(ms)}` : `Due ${dateTime(task.dueAt)}`,
@@ -110,6 +107,7 @@ const FIELD_LABEL: Record<string, string> = {
   dueAt: 'due time',
   room: 'room',
   assignees: 'assigned to',
+  verifier: 'verifier',
 };
 
 /** One line per timeline entry: "Ravi marked it done". */

@@ -1,7 +1,9 @@
 import ExcelJS from 'exceljs';
+import { ObjectId } from 'mongodb';
 import request from 'supertest';
 import { describe, expect, it } from 'vitest';
 import { createApp } from '../src/app';
+import { getDb } from '../src/db/mongoose';
 import { createHotel, grant, signedInAs, useTestDatabase } from './helpers';
 
 useTestDatabase();
@@ -92,6 +94,36 @@ describe('rooms Excel import (Plan 07)', () => {
     );
   });
 
+  it('lists the Excel files rooms came from, newest first, with room counts', async () => {
+    const { admin, hotelId, dlx } = await setup();
+    const db = getDb();
+    const make = (roomNumber: string, url: string | null, name: string | null, at: Date) => ({
+      hotelId: new ObjectId(hotelId),
+      roomTypeId: new ObjectId(dlx.id),
+      roomNumber,
+      importFileUrl: url,
+      importFileName: name,
+      isActive: true,
+      isDeleted: false,
+      updatedBy: new ObjectId(admin.user.id),
+      createdAt: at,
+      updatedAt: at,
+    });
+    await db.collection('rooms').insertMany([
+      make('1', 'https://m.example.com/imports/a.xlsx', 'a.xlsx', new Date('2026-11-01')),
+      make('2', 'https://m.example.com/imports/a.xlsx', 'a.xlsx', new Date('2026-11-01')),
+      make('3', 'https://m.example.com/imports/b.xlsx', 'b.xlsx', new Date('2026-11-02')),
+      make('4', null, null, new Date('2026-11-03')), // added by hand: not listed
+    ]);
+
+    const res = await admin.get(base(hotelId) + '/import/history');
+    expect(res.status).toBe(200);
+    expect(res.body.data).toMatchObject([
+      { fileName: 'b.xlsx', rooms: 1, fileUrl: 'https://m.example.com/imports/b.xlsx' },
+      { fileName: 'a.xlsx', rooms: 2, importedBy: { id: admin.user.id } },
+    ]);
+  });
+
   it('preview saves nothing; commit creates; the same file again changes nothing', async () => {
     const { admin, hotelId, hotelCode, dlx, st } = await setup();
     const file = await xlsx([
@@ -117,6 +149,14 @@ describe('rooms Excel import (Plan 07)', () => {
     expect(list.every((r) => r.isActive)).toBe(true); // new rooms are active
     expect(list[2].roomType.code).toBe(st.code);
     expect(list[0].createdBy).toBe(admin.user.id);
+
+    // The uploaded file is kept and each room points at it (Plan 11). Tests run on local disk, so
+    // there is no public link yet: the rooms carry none and the history is empty.
+    const rooms = await getDb().collection('rooms').find({}).toArray();
+    expect(rooms.every((r) => r.importFileUrl === null || r.importFileUrl === undefined)).toBe(
+      true,
+    );
+    expect((await admin.get(base(hotelId) + '/import/history')).body.data).toEqual([]);
 
     const again = await upload(admin, hotelId, 'commit', file);
     expect(again.body.data).toMatchObject({ created: 0, updated: 0, unchanged: 3 });

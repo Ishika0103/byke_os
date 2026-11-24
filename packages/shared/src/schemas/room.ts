@@ -112,3 +112,12 @@ export type RoomImportResult = {
   rejected: number;
   rejectedRows: RoomImportRow[];
 };
+
+/** An Excel file used to import this hotel's rooms (Plan 11), with how many rooms it stands behind. */
+export type RoomImportLog = {
+  fileUrl: string;
+  fileName: string;
+  rooms: number;
+  importedAt: string;
+  importedBy: { id: string; name: string } | null;
+};

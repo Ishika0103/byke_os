@@ -4,7 +4,6 @@ import { StyleSheet, View } from 'react-native';
 
 import { Can } from '@/features/auth';
 import { ThemedText } from '@/components/themed-text';
-import { Banner } from '@/components/ui/banner';
 import { Card } from '@/components/ui/card';
 import { EmptyState } from '@/components/ui/empty-state';
 import { Icon } from '@/components/ui/icon';
@@ -28,11 +27,13 @@ import {
   useNow,
   useTaskDetail,
 } from '@/features/tasks';
+import { usePullRefresh } from '@/hooks/use-pull-refresh';
 import { apiFileUrl } from '@/lib/api-client';
 
 export default function TaskScreen() {
   const { id, hotelId } = useLocalSearchParams<{ id: string; hotelId: string }>();
-  const { task, setTask, error, retry } = useTaskDetail(hotelId, id);
+  const { task, setTask, error, retry, reload } = useTaskDetail(hotelId, id);
+  const { refreshing, onRefresh } = usePullRefresh(reload);
   const now = useNow();
 
   if (!task) {
@@ -50,14 +51,12 @@ export default function TaskScreen() {
   const due = dueText(task, now);
   const open = OPEN_STAGES.includes(task.stage);
   const flag =
-    task.stage === 'blocked'
-      ? { label: 'Blocked', tone: 'warning' as const }
-      : task.stage === 'cancelled'
-        ? { label: 'Cancelled', tone: 'danger' as const }
-        : undefined;
+    task.stage === 'cancelled' ? { label: 'Cancelled', tone: 'danger' as const } : undefined;
 
   return (
     <Screen
+      onRefresh={onRefresh}
+      refreshing={refreshing}
       header={
         <PageHeader
           back
@@ -95,10 +94,6 @@ export default function TaskScreen() {
         <StageProgress steps={PROGRESS_STEPS} current={progressIndex(task)} flag={flag} />
       </Card>
 
-      {task.stage === 'blocked' && task.blockedReason ? (
-        <Banner tone="info" message={`Blocked: ${task.blockedReason}`} />
-      ) : null}
-
       <Can permission="edit-task">
         <TaskActions hotelId={hotelId} task={task} onChanged={setTask} />
       </Can>
@@ -111,6 +106,7 @@ export default function TaskScreen() {
             task.assignees.length ? task.assignees.map((a) => a.name).join(', ') : 'Unassigned'
           }
         />
+        <Detail label="Verifier" value={task.verifier?.name ?? 'None'} />
         <Detail label="Due" value={dateTime(task.dueAt)} />
         <Detail label="Room" value={task.room ? `Room ${task.room.roomNumber}` : 'None'} />
         <Detail label="Department" value={task.department?.name ?? 'None'} />
